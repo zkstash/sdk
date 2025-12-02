@@ -1,0 +1,62 @@
+{
+  "name": "@zkstash/sdk",
+  "version": "0.0.1",
+  "description": "TypeScript SDK for zkstash - Memory layer for AI agents on EVM and Solana",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zkstash/sdk.git"
+  },
+  "homepage": "https://github.com/zkstash/sdk",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --pool forks",
+    "e2e": "tsx test/e2e.ts",
+    "mcp-e2e": "tsx test/mcp-e2e.ts",
+    "lint": "eslint src --ext .ts",
+    "prepublishOnly": "npm run build"
+  },
+  "author": "zkstash",
+  "license": "MIT",
+  "dependencies": {
+    "@solana/kit": "^5.0.0",
+    "ethers": "^6.15.0",
+    "x402": "^0.7.3",
+    "x402-fetch": "^0.7.3",
+    "zod": "^4.1.13",
+    "zod-to-json-schema": "^3.25.0"
+  },
+  "devDependencies": {
+    "@langchain/anthropic": "^1.2.0",
+    "@langchain/core": "^1.1.1",
+    "@modelcontextprotocol/sdk": "^1.23.0",
+    "@types/node": "^24.10.1",
+    "langchain": "^1.1.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.14"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "ai",
+    "agents",
+    "evm",
+    "solana",
+    "sdk",
+    "memory"
+  ],
+  "files": [
+    "dist/",
+    "README.md"
+  ],
+  "bugs": {
+    "url": "https://github.com/zkstash/sdk/issues"
+  }
+}
