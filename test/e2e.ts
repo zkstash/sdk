@@ -1,12 +1,11 @@
 import { fromPrivateKey } from "../src";
 
-// const TEST_PRIVATE_KEY = process.env.PRIVATE_KEY!;
+const TEST_PRIVATE_KEY = '';
 
 const client = await fromPrivateKey(
   "solana-devnet",
   "http://localhost:3000",
-  // TEST_PRIVATE_KEY
-  "2XWcxyPwThSovVeZWmS5wkh7qYKUvXtftmr89X78UpbPuAut873o9FPgfhQwtQEuWSDNaqGo8Nbe2MHafC9V7vsh",
+  TEST_PRIVATE_KEY
   {
     paymentRequirementsSelector: (paymentRequirements) => {
       const r = paymentRequirements.find(

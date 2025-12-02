@@ -1,17 +1,17 @@
-# API
+# ZKStash SDK
 
 ## Quick start
 
 If you just need a ready-to-go client and are fine using the same private key
-for both Degentics auth and x402 payments, use `fromPrivateKey`:
+for both ZKStash auth and x402 payments, use `fromPrivateKey`:
 
 ```ts
-import { fromPrivateKey } from "@degentics/memory-sdk";
+import { fromPrivateKey } from "@zkstash/sdk";
 
 async function main() {
   const client = await fromPrivateKey(
     "base-sepolia",
-    "https://api.degentics.ai",
+    "https://api.zkstash.ai",
     process.env.PRIVATE_KEY as `0x${string}`,
     {
       maxValue: 5_000n, // optional payment cap in base units
@@ -38,13 +38,13 @@ signers via `x402-fetch` and pass them to the `MemoryClient` constructor.
 
 ```ts
 import { createSigner } from "x402-fetch";
-import { MemoryClient } from "@degentics/memory-sdk";
+import { MemoryClient } from "@zkstash/sdk";
 
 const authSigner = await createSigner("base-sepolia", process.env.AGENT_KEY!);
 const paymentSigner = await createSigner("base-sepolia", process.env.X402_KEY!);
 
 const client = new MemoryClient({
-  baseUrl: "https://api.degentics.ai",
+  baseUrl: "https://api.zkstash.ai",
   signer: authSigner,
   payment: {
     signer: paymentSigner,
@@ -57,7 +57,7 @@ const client = new MemoryClient({
 
 ```ts
 import { createSigner } from "x402-fetch";
-import { MemoryClient } from "@degentics/memory-sdk";
+import { MemoryClient } from "@zkstash/sdk";
 
 const authSigner = await createSigner("solana-devnet", process.env.AGENT_KEY!);
 const paymentSigner = await createSigner(
@@ -66,7 +66,7 @@ const paymentSigner = await createSigner(
 );
 
 const client = new MemoryClient({
-  baseUrl: "https://api.degentics.ai",
+  baseUrl: "https://api.zkstash.ai",
   signer: authSigner,
   payment: {
     signer: paymentSigner,

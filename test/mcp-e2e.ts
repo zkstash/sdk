@@ -1,7 +1,6 @@
 import * as MCP from "../src/mcp.js";
 
-const TEST_PRIVATE_KEY =
-  "2XWcxyPwThSovVeZWmS5wkh7qYKUvXtftmr89X78UpbPuAut873o9FPgfhQwtQEuWSDNaqGo8Nbe2MHafC9V7vsh";
+const TEST_PRIVATE_KEY = '';
 const MCP_URL = "http://localhost:3000/mcp";
 
 async function main() {
