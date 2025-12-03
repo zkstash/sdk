@@ -28,8 +28,7 @@
     "ethers": "^6.15.0",
     "x402": "^0.7.3",
     "x402-fetch": "^0.7.3",
-    "zod": "^4.1.13",
-    "zod-to-json-schema": "^3.25.0"
+    "zod": "^4.1.13"
   },
   "devDependencies": {
     "@langchain/anthropic": "^1.2.0",
@@ -58,5 +57,8 @@
   ],
   "bugs": {
     "url": "https://github.com/zkstash/sdk/issues"
+  },
+  "directories": {
+    "test": "test"
   }
 }

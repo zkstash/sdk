@@ -29,7 +29,6 @@ export interface McpClientOptions {
  * 
  * const mcpClient = await MCP.fromPrivateKey(
  *   "solana-devnet",
- *   "http://localhost:3000/mcp",  // Full MCP endpoint URL
  *   "your-private-key",
  *   {
  *     agentId: "my-agent",
@@ -43,14 +42,14 @@ export interface McpClientOptions {
  * ```
  * 
  * @param chain - The blockchain network (e.g., "solana-devnet", "solana", "base", "ethereum")
- * @param mcpUrl - The full MCP endpoint URL (e.g., "https://api.zkstash.com/mcp")
+ * @param mcpUrl - The full MCP endpoint URL (e.g., "https://zkstash.ai/mcp")
  * @param privateKey - The wallet private key for auth and payments
  * @param options - Additional configuration (agentId is required)
  * @returns MCP Client instance ready to use with x402 payment support
  */
 export async function fromPrivateKey(
   chain: string,
-  mcpUrl: string,
+  mcpUrl: string = 'https://zkstash.ai/mcp',
   privateKey: string,
   options: McpClientOptions
 ): Promise<Client> {

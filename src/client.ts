@@ -3,7 +3,6 @@ import { createHash } from "crypto";
 import { Signer as EvmSigner } from "ethers";
 import { createSignableMessage, MessagePartialSigner } from "@solana/kit";
 import { z } from "zod";
-import { zodToJsonSchema } from "zod-to-json-schema";
 
 import {
   createSigner,
@@ -89,14 +88,14 @@ export class MemoryClient {
   // ----- public high-level APIs -----
 
   createMemory(payload: CreateMemoryPayload) {
-    return this.request("/api/v1/memories", {
+    return this.request("/memories", {
       method: "POST",
       body: payload,
     });
   }
 
   deleteMemory(params: { id: string }) {
-    return this.request(`/api/v1/memories/${params.id}`, {
+    return this.request(`/memories/${params.id}`, {
       method: "DELETE",
     });
   }
@@ -118,7 +117,7 @@ export class MemoryClient {
     if (params.mode) {
       qs.set("mode", params.mode);
     }
-    return this.request(`/api/v1/memories/search?${qs.toString()}`, {
+    return this.request(`/memories/search?${qs.toString()}`, {
       method: "GET",
     });
   }
@@ -156,13 +155,12 @@ export class MemoryClient {
     if (typeof payload.schema === "string") {
       schemaStr = payload.schema;
     } else {
-      // Note: The server expects a JSON Schema string.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const json = zodToJsonSchema(payload.schema as any);
-      schemaStr = JSON.stringify(json);
+      schemaStr = JSON.stringify(
+        z.toJSONSchema(payload.schema)
+      );
     }
 
-    return this.request("/api/v1/schemas", {
+    return this.request("/schemas", {
       method: "POST",
       body: {
         ...payload,
@@ -172,13 +170,13 @@ export class MemoryClient {
   }
 
   listSchemas() {
-    return this.request(`/api/v1/schemas`, {
+    return this.request(`/schemas`, {
       method: "GET",
     });
   }
 
   deleteSchema(filters: { name: string }) {
-    return this.request(`/api/v1/schemas/${encodeURIComponent(filters.name)}`, {
+    return this.request(`/schemas/${encodeURIComponent(filters.name)}`, {
       method: "DELETE",
     });
   }
@@ -273,7 +271,6 @@ export class MemoryClient {
  * ```typescript
  * const client = await fromPrivateKey(
  *   "solana-devnet",
- *   "https://api.degentics.ai",
  *   "0x1234567890abcdef",
  *   {
  *     maxValue: 5_000n, // Optional, defaults to 0.1 USDC
@@ -282,14 +279,14 @@ export class MemoryClient {
  * );
  * ```
  * @param chain - The chain to use for the x402 signer (@see https://github.com/coinbase/x402/blob/main/typescript/packages/x402/src/types/shared/network.ts)
- * @param baseUrl - The base URL of the API
+ * @param baseUrl - The base URL of the API. Default: https://api.zkstash.ai
  * @param signerPrivateKey - The private key of the signer. Also used to sign x402 requests.
  * @param paymentConfig - The payment configuration
  * @returns A new MemoryClient instance
  */
 export async function fromPrivateKey(
   chain: string,
-  baseUrl: string,
+  baseUrl: string = 'https://api.zkstash.ai',
   signerPrivateKey: string,
   paymentConfig?: Omit<PaymentConfig, "signer">
 ) {
