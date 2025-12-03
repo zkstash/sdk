@@ -6,8 +6,16 @@
   "engines": {
     "node": ">=18"
   },
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "exports": {
+    "./rest": {
+      "import": "./dist/rest.js",
+      "types": "./dist/rest.d.ts"
+    },
+    "./mcp": {
+      "import": "./dist/mcp.js",
+      "types": "./dist/mcp.d.ts"
+    }
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/zkstash/sdk.git"
@@ -25,7 +33,8 @@
   "license": "MIT",
   "dependencies": {
     "@solana/kit": "^5.0.0",
-    "ethers": "^6.15.0",
+    "bs58": "^6.0.0",
+    "viem": "^2.41.2",
     "x402": "^0.7.3",
     "x402-fetch": "^0.7.3",
     "zod": "^4.1.13"

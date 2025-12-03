@@ -1,21 +1,28 @@
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { createSigner, type Signer } from "x402-fetch";
-import type { MessagePartialSigner } from "@solana/kit";
-import type { Signer as EvmSigner } from "ethers";
-import type { PaymentConfig } from "./client.js";
 import { createHash } from "crypto";
 
-// Import createPaymentHeader directly from x402 modules
-import { createPaymentHeader } from "x402/client";
-import type { PaymentRequirements } from "x402/types";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
-export interface McpClientOptions {
-  agentId: string;
-  threadId?: string;
-  maxValue?: bigint;
-  paymentConfig?: Omit<PaymentConfig, "signer" | "maxValue">;
-}
+import { type Signer as X402Signer } from "x402-fetch";
+
+import {
+  signWithEvm,
+  signWithSolana,
+  signerFromPrivateKey
+} from "./utils.js";
+
+// Import createPaymentHeader directly from x402 modules
+import { createPaymentHeader, selectPaymentRequirements } from "x402/client";
+import {
+  evm,
+  Network,
+  PaymentRequirements,
+  ChainIdToNetwork,
+  isMultiNetworkSigner,
+  isSvmSignerWallet
+} from "x402/types";
+
+import type { McpFromPrivateKeyOptions, McpFromApiKeyOptions } from "./types.js";
 
 /**
  * Create an MCP client from a private key.
@@ -25,15 +32,17 @@ export interface McpClientOptions {
  * 
  * @example
  * ```typescript
- * import * as MCP from "@zkstash/sdk/mcp";
+ * import { fromPrivateKey } from "@zkstash/sdk/mcp";
  * 
- * const mcpClient = await MCP.fromPrivateKey(
+ * const mcpClient = await fromPrivateKey(
  *   "solana-devnet",
  *   "your-private-key",
  *   {
  *     agentId: "my-agent",
  *     threadId: "my-thread", // optional
- *     maxValue: BigInt(0.1 * 10 ** 6), // 0.1 USDC
+ *     payment: {
+ *       maxValue: BigInt(0.1 * 10 ** 6), // 0.1 USDC
+ *     },
  *   }
  * );
  * 
@@ -41,33 +50,80 @@ export interface McpClientOptions {
  * const tools = await mcpClient.getTools();
  * ```
  * 
- * @param chain - The blockchain network (e.g., "solana-devnet", "solana", "base", "ethereum")
- * @param mcpUrl - The full MCP endpoint URL (e.g., "https://zkstash.ai/mcp")
  * @param privateKey - The wallet private key for auth and payments
- * @param options - Additional configuration (agentId is required)
+ * @param options - Configuration (chain and agentId are required)
  * @returns MCP Client instance ready to use with x402 payment support
  */
 export async function fromPrivateKey(
-  chain: string,
-  mcpUrl: string = 'https://zkstash.ai/mcp',
   privateKey: string,
-  options: McpClientOptions
+  options: McpFromPrivateKeyOptions
+): Promise<Client> {
+  const signer = await signerFromPrivateKey(privateKey);
+
+  return fromSigner(signer, {
+    ...options,
+    payment: {
+      signer, // Use the same signer for payment by default
+      ...options.payment,
+    },
+  });
+}
+
+/**
+ * Create an MCP client from an existing signer.
+ * Advanced: Use this when you need separate signers for authentication and payment.
+ * 
+ * @example
+ * ```typescript
+ * import { fromSigner } from "@zkstash/sdk/mcp";
+ * import { createSigner } from "x402-fetch";
+ * 
+ * const authSigner = await createSigner("ethereum", "0xAUTH_KEY");
+ * const paymentSigner = await createSigner("base", "0xPAYMENT_KEY");
+ * 
+ * const mcpClient = await fromSigner(
+ *   "ethereum",  // chain for auth signer
+ *   authSigner,
+ *   {
+ *     agentId: "my-agent",
+ *     threadId: "my-thread", // optional
+ *     payment: {
+ *       signer: paymentSigner,
+ *       maxValue: BigInt(0.1 * 10 ** 6),
+ *     }
+ *   }
+ * );
+ * ```
+ * 
+ * @param signer - The x402 signer to use for authentication
+ * @param options - Configuration (agentId is required, can include separate payment signer)
+ * @returns MCP Client instance ready to use with x402 payment support
+ */
+export async function fromSigner(
+  signer: X402Signer,
+  options: McpFromPrivateKeyOptions & {
+    payment?: {
+      signer?: X402Signer;
+      maxValue?: bigint;
+      paymentRequirementsSelector?: (requirements: PaymentRequirements[]) => PaymentRequirements;
+      fetch?: typeof fetch;
+    };
+  }
 ): Promise<Client> {
   const {
     agentId,
     threadId,
-    maxValue,
-    paymentConfig,
+    payment,
+    mcpUrl = 'https://zkstash.ai/mcp',
   } = options;
 
   if (!agentId) {
     throw new Error("agentId is required for MCP client");
   }
 
-  // Create signer for both auth and payment
-  const signer = await createSigner(chain, privateKey);
   const { address } = signer as { address: string };
-  const maxPayment = maxValue ?? BigInt(0.1 * 10 ** 6);
+  const paymentSigner = payment?.signer ?? signer;  // Default to auth signer if not provided
+  const maxPayment = payment?.maxValue ?? BigInt(0.1 * 10 ** 6);
 
   // Helper to sign requests (supports both EVM and Solana)
   const signRequest = async (url: URL, method: string, body: string) => {
@@ -108,7 +164,7 @@ export async function fromPrivateKey(
       });
 
       // Use standard fetch with auth headers
-      return (paymentConfig?.fetch ?? globalThis.fetch)(url as RequestInfo, { ...opts, headers });
+      return (payment?.fetch ?? globalThis.fetch)(url as RequestInfo, { ...opts, headers });
     },
   });
 
@@ -146,14 +202,15 @@ export async function fromPrivateKey(
     ) {
       const accepts = x402Error.accepts;
 
-      // Pick payment requirement that matches our network
-      const paymentRequirementsSelector = paymentConfig?.paymentRequirementsSelector ??
-        ((requirements: PaymentRequirements[]) => {
-          const r = requirements.find((pr) => pr.network === chain);
-          return r || requirements[0];
-        });
+      const network = isMultiNetworkSigner(paymentSigner)
+        ? undefined
+        : evm.isSignerWallet(paymentSigner as typeof evm.EvmSigner)
+          ? ChainIdToNetwork[(paymentSigner as typeof evm.EvmSigner).chain?.id]
+          : isSvmSignerWallet(paymentSigner)
+            ? (["solana", "solana-devnet"] as Network[])
+            : undefined;
 
-      const req = paymentRequirementsSelector(accepts);
+      const req = selectPaymentRequirements(accepts, network);
 
       if (!req || req.scheme !== "exact") {
         return result; // Can't handle non-exact schemes
@@ -170,9 +227,9 @@ export async function fromPrivateKey(
         };
       }
 
-      // Generate payment header
+      // Generate payment header using the payment signer
       const paymentHeader = await createPaymentHeader(
-        signer as any, // x402 types will handle EVM/Solana
+        paymentSigner as any, // x402 types will handle EVM/Solana
         1, // x402 version
         req
       );
@@ -197,19 +254,60 @@ export async function fromPrivateKey(
   return client;
 }
 
-// Signing helpers (same as REST client)
-async function signWithEvm(signer: Signer, message: string) {
-  const s = signer as unknown as EvmSigner;
-  return s.signMessage(message);
-}
+/**
+ * Create an MCP client from an API key.
+ * Bypasses x402 payment logic.
+ * 
+ * @example
+ * ```typescript
+ * import { fromApiKey } from "@zkstash/sdk/mcp";
+ * 
+ * const mcpClient = await fromApiKey(
+ *   "zk_...",
+ *   { agentId: "my-agent" }
+ * );
+ * ```
+ * 
+ * @param apiKey - The API key
+ * @param options - Configuration (agentId is required)
+ * @returns MCP Client instance
+ */
+export async function fromApiKey(
+  apiKey: string,
+  options: McpFromApiKeyOptions
+): Promise<Client> {
+  const { agentId, threadId, mcpUrl = 'https://zkstash.ai/mcp' } = options;
 
-async function signWithSolana(signer: Signer, message: string) {
-  const s = signer as unknown as MessagePartialSigner;
-  const address = s.address;
+  if (!agentId) {
+    throw new Error("agentId is required for MCP client");
+  }
 
-  const { createSignableMessage } = await import("@solana/kit");
-  const signableMessage = createSignableMessage(message);
-  const [signedMessage] = await s.signMessages([signableMessage]);
+  // Create transport with auth headers
+  const transport = new StreamableHTTPClientTransport(new URL(mcpUrl), {
+    fetch: async (url: RequestInfo | URL, opts?: RequestInit) => {
+      const headers = new Headers(opts?.headers || {});
+      headers.set("Authorization", `Bearer ${apiKey}`);
+      headers.set("x-agent-id", agentId);
+      if (threadId) {
+        headers.set("x-thread-id", threadId);
+      }
 
-  return Buffer.from(signedMessage[address]).toString("base64");
+      return globalThis.fetch(url as RequestInfo, { ...opts, headers });
+    },
+  });
+
+  // Create base client
+  const client = new Client(
+    {
+      name: "zkstash-sdk-mcp",
+      version: "1.0.0"
+    },
+    {
+      capabilities: {}
+    }
+  );
+
+  await client.connect(transport);
+
+  return client;
 }

@@ -1,17 +1,18 @@
-import { fromPrivateKey } from "../src";
+import { fromPrivateKey } from "../src/rest.js";
+import type { PaymentRequirements } from "x402/types";
 
-const TEST_PRIVATE_KEY = '';
+const TEST_PRIVATE_KEY = '2XWcxyPwThSovVeZWmS5wkh7qYKUvXtftmr89X78UpbPuAut873o9FPgfhQwtQEuWSDNaqGo8Nbe2MHafC9V7vsh';
 
 const client = await fromPrivateKey(
-  "solana-devnet",
-  "http://localhost:3000",
-  TEST_PRIVATE_KEY
+  TEST_PRIVATE_KEY,
   {
-    paymentRequirementsSelector: (paymentRequirements) => {
-      const r = paymentRequirements.find(
-        (pr) => pr.network === "solana-devnet"
-      );
-      return r || paymentRequirements[0];
+    payment: {
+      paymentRequirementsSelector: (paymentRequirements: PaymentRequirements[]) => {
+        const r = paymentRequirements.find(
+          (pr) => pr.network === "solana-devnet"
+        );
+        return r || paymentRequirements[0];
+      },
     },
   }
 );
@@ -48,7 +49,7 @@ async function searchMemory() {
 }
 
 async function deleteMemory() {
-  const deleteMemoryRes = await client.deleteMemory({ id: memoryId });
+  const deleteMemoryRes = await client.deleteMemory(memoryId);
   console.log("deleteMemory response:", deleteMemoryRes);
 }
 
@@ -75,7 +76,7 @@ async function listSchemas() {
 }
 
 async function deleteSchema() {
-  const deleteSchemaRes = await client.deleteSchema({ name: "test_schema" });
+  const deleteSchemaRes = await client.deleteSchema("test_schema");
   console.log("deleteSchema response:", deleteSchemaRes);
 }
 
