@@ -1,7 +1,7 @@
 import { fromPrivateKey } from "../src/rest.js";
 import type { PaymentRequirements } from "x402/types";
 
-const TEST_PRIVATE_KEY = '2XWcxyPwThSovVeZWmS5wkh7qYKUvXtftmr89X78UpbPuAut873o9FPgfhQwtQEuWSDNaqGo8Nbe2MHafC9V7vsh';
+const TEST_PRIVATE_KEY = '';
 
 const client = await fromPrivateKey(
   TEST_PRIVATE_KEY,
