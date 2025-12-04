@@ -1,7 +1,11 @@
 import { fromPrivateKey } from "../src/rest.js";
 import type { PaymentRequirements } from "x402/types";
 
-const TEST_PRIVATE_KEY = '';
+const TEST_PRIVATE_KEY = process.env.TEST_PRIVATE_KEY;
+
+if (!TEST_PRIVATE_KEY) {
+  throw new Error("TEST_PRIVATE_KEY environment variable is required");
+}
 
 const client = await fromPrivateKey(
   TEST_PRIVATE_KEY,

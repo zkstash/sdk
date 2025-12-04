@@ -58,7 +58,7 @@ type PatchSchemaPayload = {
 export type { PaymentConfig } from "./types.js";
 
 export type ZkStashOptions = {
-  baseUrl: string;
+  baseUrl?: string;
   signer?: X402Signer;
   apiKey?: string;
   payment?: PaymentConfig;
@@ -67,13 +67,13 @@ export type ZkStashOptions = {
 type FetchLike = typeof globalThis.fetch;
 
 export class ZkStash {
-  private readonly baseUrl: string;
+  private readonly baseUrl?: string;
   private readonly signer?: X402Signer;
   private readonly apiKey?: string;
   private readonly fetchFn: FetchLike;
 
   constructor(opts: ZkStashOptions) {
-    this.baseUrl = opts.baseUrl.replace(/\/$/, "");
+    this.baseUrl = opts.baseUrl?.replace(/\/$/, "") || "https://api.zkstash.ai";
     this.signer = opts.signer;
     this.apiKey = opts.apiKey;
 
@@ -319,14 +319,12 @@ export async function fromPrivateKey(
   }
 ) {
   const signer = await signerFromPrivateKey(privateKey);
-  const { apiUrl = 'https://api.zkstash.ai', payment } = options;
-
   return new ZkStash({
-    baseUrl: apiUrl,
+    baseUrl: options?.apiUrl,
     signer,
     payment: {
       signer,
-      ...payment,
+      ...options?.payment,
     },
   });
 }
@@ -361,11 +359,10 @@ export function fromSigner(
     payment?: PaymentConfig;
   }
 ): ZkStash {
-  const { apiUrl = 'https://api.zkstash.ai', payment } = options || {};
   return new ZkStash({
-    baseUrl: apiUrl,
+    baseUrl: options?.apiUrl,
+    payment: options?.payment,
     signer,
-    payment,
   });
 }
 
@@ -388,9 +385,8 @@ export function fromApiKey(
     apiUrl?: string;
   }
 ) {
-  const { apiUrl = 'https://api.zkstash.ai' } = options || {};
   return new ZkStash({
-    baseUrl: apiUrl,
     apiKey,
+    baseUrl: options?.apiUrl,
   });
 }
