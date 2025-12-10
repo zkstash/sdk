@@ -1,4 +1,6 @@
+import { randomUUID } from "crypto";
 import { fromPrivateKey } from "../src/rest.js";
+
 import type { PaymentRequirements } from "x402/types";
 
 const TEST_PRIVATE_KEY = process.env.TEST_PRIVATE_KEY;
@@ -10,10 +12,11 @@ if (!TEST_PRIVATE_KEY) {
 const client = await fromPrivateKey(
   TEST_PRIVATE_KEY,
   {
+    // apiUrl: "http://localhost:3001/api/v1",
     payment: {
       paymentRequirementsSelector: (paymentRequirements: PaymentRequirements[]) => {
         const r = paymentRequirements.find(
-          (pr) => pr.network === "solana-devnet"
+          (pr) => pr.network === "solana"
         );
         return r || paymentRequirements[0];
       },
@@ -26,6 +29,11 @@ let memoryId = "";
 async function createMemory() {
   const memoryPayload = {
     agentId: "agent_demo",
+    threadId: randomUUID(),
+    schemas: [
+      "episodic_memory",
+      "user_profile",
+    ],
     conversation: [
       { role: "user", content: "Hi, im chris. I'm training for the San Francisco marathon on April 13th and need help staying organized." },
       { role: "assistant", content: "Great! I can help with that!" },
@@ -33,8 +41,6 @@ async function createMemory() {
       { role: "assistant", content: "Noted! What can I do for you? " },
       { role: "user", content: "Oh, i forgot. Im going to spend xmass in Shangai this year. Remind me to visit DisneyLand on dec 25!" },
       { role: "assistant", content: "Thats soo cool!. Want me to help with anything?" },
-      { role: "user", content: "Im going to the gym 4 times per week now." },
-      { role: "assistant", content: "Noted!" },
     ],
   };
 

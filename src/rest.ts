@@ -247,7 +247,8 @@ export class ZkStash {
       const text = await res.text();
       throw new Error(`API error (${res.status} ${res.statusText}): ${text}`);
     }
-    return (await res.json()) as T;
+
+    return res.json() as T;
   }
 
   // ----- signing helpers -----
@@ -299,7 +300,6 @@ export class ZkStash {
  * @example
  * ```typescript
  * const client = await fromPrivateKey(
- *   "solana-devnet",
  *   "0x1234567890abcdef",
  *   {
  *     maxValue: 5_000n, // Optional, defaults to 0.1 USDC
