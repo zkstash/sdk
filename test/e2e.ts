@@ -9,20 +9,16 @@ if (!TEST_PRIVATE_KEY) {
   throw new Error("TEST_PRIVATE_KEY environment variable is required");
 }
 
-const client = await fromPrivateKey(
-  TEST_PRIVATE_KEY,
-  {
-    // apiUrl: "http://localhost:3001/api/v1",
-    payment: {
-      paymentRequirementsSelector: (paymentRequirements: PaymentRequirements[]) => {
-        const r = paymentRequirements.find(
-          (pr) => pr.network === "solana"
-        );
-        return r || paymentRequirements[0];
-      },
+const client = await fromPrivateKey(TEST_PRIVATE_KEY, {
+  payment: {
+    paymentRequirementsSelector: (
+      paymentRequirements: PaymentRequirements[]
+    ) => {
+      const r = paymentRequirements.find((pr) => pr.network === "solana");
+      return r || paymentRequirements[0];
     },
-  }
-);
+  },
+});
 
 let memoryId = "";
 
@@ -30,17 +26,29 @@ async function createMemory() {
   const memoryPayload = {
     agentId: "agent_demo",
     threadId: randomUUID(),
-    schemas: [
-      "episodic_memory",
-      "user_profile",
-    ],
+    schemas: ["episodic_memory", "user_profile"],
     conversation: [
-      { role: "user", content: "Hi, im chris. I'm training for the San Francisco marathon on April 13th and need help staying organized." },
+      {
+        role: "user",
+        content:
+          "Hi, im chris. I'm training for the San Francisco marathon on April 13th and need help staying organized.",
+      },
       { role: "assistant", content: "Great! I can help with that!" },
-      { role: "user", content: "Some info to give you context. Im 44, male, 180cm, 80kg. My protein goal is 2gr per day, im going to the gym 3 times per week." },
+      {
+        role: "user",
+        content:
+          "Some info to give you context. Im 44, male, 180cm, 80kg. My protein goal is 2gr per day, im going to the gym 3 times per week.",
+      },
       { role: "assistant", content: "Noted! What can I do for you? " },
-      { role: "user", content: "Oh, i forgot. Im going to spend xmass in Shangai this year. Remind me to visit DisneyLand on dec 25!" },
-      { role: "assistant", content: "Thats soo cool!. Want me to help with anything?" },
+      {
+        role: "user",
+        content:
+          "Oh, i forgot. Im going to spend xmass in Shangai this year. Remind me to visit DisneyLand on dec 25!",
+      },
+      {
+        role: "assistant",
+        content: "Thats soo cool!. Want me to help with anything?",
+      },
     ],
   };
 

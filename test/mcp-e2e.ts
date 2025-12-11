@@ -6,26 +6,23 @@ if (!TEST_PRIVATE_KEY) {
   throw new Error("TEST_PRIVATE_KEY environment variable is required");
 }
 
-const MCP_URL = "http://localhost:3000/mcp";
-
 // Create MCP client using the helper - much simpler!
-const client = await fromPrivateKey(
-  TEST_PRIVATE_KEY,
-  {
-    agentId: "test_agent",
-    threadId: "test_thread",
-    mcpUrl: MCP_URL,  // Full MCP endpoint URL
-    payment: {
-      maxValue: 100000n, // 0.1 USDC
-    }
-  }
-);
+const client = await fromPrivateKey(TEST_PRIVATE_KEY, {
+  agentId: "test_agent",
+  threadId: "test_thread",
+  payment: {
+    maxValue: 100000n, // 0.1 USDC
+  },
+});
 
 async function main() {
   try {
     // List available tools
     const toolsResult = await client.listTools();
-    console.log("Available tools:", toolsResult.tools.map((t) => t.name));
+    console.log(
+      "Available tools:",
+      toolsResult.tools.map((t) => t.name)
+    );
 
     // Test search_memories tool
     const searchResult = await client.callTool({

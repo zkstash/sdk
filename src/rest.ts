@@ -237,18 +237,24 @@ export class ZkStash {
       ...authHeaders,
     };
 
-    const res = await this.fetchFn(url, {
-      method,
-      headers,
-      body: method === "GET" ? undefined : bodyJson,
-    });
+    try {
+      const res = await this.fetchFn(url, {
+        method,
+        headers,
+        body: method === "GET" ? undefined : bodyJson,
+      });
+        
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`API error (${res.status} ${res.statusText}): ${text}`);
+      }
 
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`API error (${res.status} ${res.statusText}): ${text}`);
+      return res.json() as T;
+
+    } catch (error) {
+      console.error("request error:", (error as Error).message);
+      throw error;
     }
-
-    return res.json() as T;
   }
 
   // ----- signing helpers -----
