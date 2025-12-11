@@ -1,18 +1,11 @@
 import { z } from "zod";
 import { createHash } from "crypto";
 
-import {
-  wrapFetchWithPayment,
-  type Signer as X402Signer
-} from "x402-fetch";
+import { wrapFetchWithPayment, type Signer as X402Signer } from "x402-fetch";
 
 import type { PaymentConfig } from "./types.js";
 
-import {
-  signWithEvm,
-  signWithSolana,
-  signerFromPrivateKey,
-} from "./utils.js";
+import { signWithEvm, signWithSolana, signerFromPrivateKey } from "./utils.js";
 
 // ------------------------------
 
@@ -182,9 +175,7 @@ export class ZkStash {
     if (typeof payload.schema === "string") {
       schemaStr = payload.schema;
     } else {
-      schemaStr = JSON.stringify(
-        z.toJSONSchema(payload.schema)
-      );
+      schemaStr = JSON.stringify(z.toJSONSchema(payload.schema));
     }
 
     return this.request("/schemas", {
@@ -243,14 +234,13 @@ export class ZkStash {
         headers,
         body: method === "GET" ? undefined : bodyJson,
       });
-        
+
       if (!res.ok) {
         const text = await res.text();
         throw new Error(`API error (${res.status} ${res.statusText}): ${text}`);
       }
 
-      return res.json() as T;
-
+      return (await res.json()) as T;
     } catch (error) {
       console.error("request error:", (error as Error).message);
       throw error;
@@ -265,7 +255,7 @@ export class ZkStash {
   }): Promise<Record<string, string>> {
     if (this.apiKey) {
       return {
-        "Authorization": `Bearer ${this.apiKey}`,
+        Authorization: `Bearer ${this.apiKey}`,
       };
     }
 
@@ -342,11 +332,11 @@ export async function fromPrivateKey(
  * @example
  * ```typescript
  * import { createSigner } from 'x402-fetch';
- * 
+ *
  * // Create separate signers for auth and payment
  * const authSigner = await createSigner("ethereum", "0xAUTH_KEY");
  * const paymentSigner = await createSigner("base", "0xPAYMENT_KEY");
- * 
+ *
  * const client = fromSigner(authSigner, {
  *   payment: {
  *     signer: paymentSigner,
@@ -371,7 +361,6 @@ export function fromSigner(
     signer,
   });
 }
-
 
 /**
  * Create a new ZkStash instance from an API key.
