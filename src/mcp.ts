@@ -14,8 +14,6 @@ import {
   Network,
   PaymentRequirements,
   ChainIdToNetwork,
-  isMultiNetworkSigner,
-  isSvmSignerWallet,
 } from "x402/types";
 
 import type {
