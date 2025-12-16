@@ -19,9 +19,6 @@ import { fromPrivateKey } from "@zkstash/sdk/rest";
 async function main() {
   const client = await fromPrivateKey(
     process.env.PRIVATE_KEY as `0x${string}`,
-    {
-      maxValue: 5_000n, // optional payment cap in base units
-    }
   );
 
   await client.createMemory({
