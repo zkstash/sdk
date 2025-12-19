@@ -9,11 +9,34 @@ import { signWithEvm, signWithSolana, signerFromPrivateKey } from "./utils.js";
 
 // ------------------------------
 
+type ConversationMessage = {
+  id?: string;
+  role: string;
+  content: string;
+};
+
+/**
+ * Direct memory input (bypasses LLM extraction).
+ * 
+ * ID Behavior:
+ * - Single-cardinality schemas: ID is auto-generated on the server. Just send kind + data.
+ * - Multiple-cardinality schemas: Omit id to create, include id to update existing.
+ */
+type DirectMemory = {
+  /** Schema name (must be registered) */
+  kind: string;
+  /** Structured data matching the schema */
+  data: Record<string, unknown>;
+  /** Optional ID - only needed for updating multiple-cardinality memories */
+  id?: string;
+};
+
 type CreateMemoryPayload = {
   agentId: string;
   threadId?: string;
   schemas?: string[];
-  conversation: { role: string; content: string }[];
+  conversation?: ConversationMessage[];
+  memories?: DirectMemory[];
 };
 
 type PatchMemoryPayload = {
@@ -98,12 +121,44 @@ export class ZkStash {
     this.fetchFn = wrappedFetch;
   }
 
-  // ----- public high-level APIs -----
-
+  /**
+   * Create memories via LLM extraction from a conversation.
+   * Use this when you want the AI to analyze the conversation and extract relevant facts.
+   */
   createMemory(payload: CreateMemoryPayload) {
+    if (!payload.conversation && !payload.memories) {
+      throw new Error("Either 'conversation' or 'memories' must be provided");
+    }
     return this.request("/memories", {
       method: "POST",
       body: payload,
+    });
+  }
+
+  /**
+   * Store structured memories directly without LLM extraction.
+   * Use this when you already have structured data (e.g., from agent tool calls).
+   * 
+   * @example
+   * ```typescript
+   * await client.storeMemories("agent-1", [
+   *   { kind: "UserProfile", data: { name: "Alice", age: 30 } },
+   *   { kind: "Preference", data: { category: "food", value: "vegetarian" } }
+   * ]);
+   * ```
+   */
+  storeMemories(
+    agentId: string,
+    memories: DirectMemory[],
+    options?: { threadId?: string }
+  ) {
+    return this.request("/memories", {
+      method: "POST",
+      body: {
+        agentId,
+        threadId: options?.threadId,
+        memories,
+      },
     });
   }
 
