@@ -1,6 +1,6 @@
 # ZKStash SDK
 
-TypeScript SDK for zkstash - Memory layer for AI agents on EVM and Solana.
+TypeScript SDK for https://zkstash.ai - Long Term Memory Management for AI agents.
 
 ## Installation
 
@@ -17,9 +17,7 @@ for both ZKStash auth and x402 payments, use `fromPrivateKey`:
 import { fromPrivateKey } from "@zkstash/sdk/rest";
 
 async function main() {
-  const client = await fromPrivateKey(
-    process.env.PRIVATE_KEY as `0x${string}`,
-  );
+  const client = await fromPrivateKey(process.env.PRIVATE_KEY as `0x${string}`);
 
   await client.createMemory({
     userId: "user_demo",
@@ -40,15 +38,12 @@ The SDK includes a Model Context Protocol (MCP) client.
 import { fromPrivateKey } from "@zkstash/sdk/mcp";
 
 async function main() {
-  const client = await fromPrivateKey(
-    process.env.PRIVATE_KEY!,
-    {
-      agentId: "agent_demo",
-      payment: {
-        maxValue: 10000n, // Optional payment cap
-      }
-    }
-  );
+  const client = await fromPrivateKey(process.env.PRIVATE_KEY!, {
+    agentId: "agent_demo",
+    payment: {
+      maxValue: 10000n, // Optional payment cap
+    },
+  });
 
   // List available tools
   const tools = await client.listTools();
@@ -96,7 +91,10 @@ import { createSigner } from "x402-fetch";
 import { ZkStash } from "@zkstash/sdk/rest";
 
 const authSigner = await createSigner("solana-devnet", process.env.AGENT_KEY!);
-const paymentSigner = await createSigner("solana-devnet", process.env.X402_KEY!);
+const paymentSigner = await createSigner(
+  "solana-devnet",
+  process.env.X402_KEY!
+);
 
 const client = new ZkStash({
   signer: authSigner,
