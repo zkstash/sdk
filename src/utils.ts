@@ -50,3 +50,113 @@ export async function signWithSolana(signer: X402Signer, message: string) {
 }
 
 export { EvmSigner, SvmSigner };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Grant Utilities
+// ─────────────────────────────────────────────────────────────────────────────
+
+import {
+  type GrantPayload,
+  type SignedGrant,
+  GRANT_MESSAGE_PREFIX,
+  SHARE_CODE_PREFIX,
+} from "./types.js";
+
+/**
+ * Build the signable message from a grant payload.
+ * Uses canonical JSON (sorted keys) for consistent signing.
+ */
+export function buildGrantMessage(payload: GrantPayload): string {
+  // Sort keys for canonical representation
+  const sorted = Object.keys(payload)
+    .sort()
+    .reduce((acc, key) => {
+      const value = payload[key as keyof GrantPayload];
+      if (value !== undefined) {
+        acc[key] = value;
+      }
+      return acc;
+    }, {} as Record<string, unknown>);
+
+  const canonical = JSON.stringify(sorted);
+  return `${GRANT_MESSAGE_PREFIX}${Buffer.from(canonical).toString("base64")}`;
+}
+
+/**
+ * Parse a duration string into seconds.
+ * Supports: "30s", "5m", "2h", "7d", "4w"
+ */
+export function parseDuration(duration: string): number {
+  const match = duration.match(/^(\d+)([smhdw])$/);
+  if (!match) {
+    throw new Error(`Invalid duration format: ${duration}. Use format like "7d", "24h", "30m"`);
+  }
+
+  const value = parseInt(match[1], 10);
+  const unit = match[2];
+
+  const multipliers: Record<string, number> = {
+    s: 1,
+    m: 60,
+    h: 60 * 60,
+    d: 24 * 60 * 60,
+    w: 7 * 24 * 60 * 60,
+  };
+
+  return value * multipliers[unit];
+}
+
+/**
+ * Sign a grant payload with the given signer.
+ *
+ * @param signer - The x402 signer (EVM or Solana wallet)
+ * @param payload - The grant payload to sign
+ * @returns Complete signed grant
+ */
+export async function signGrant(
+  signer: X402Signer,
+  payload: Omit<GrantPayload, "f">
+): Promise<SignedGrant> {
+  // Get the address from the signer
+  const address = (signer as { address: string }).address;
+  const isEvm = address.startsWith("0x");
+
+  // Complete the payload with the grantor address
+  const completePayload: GrantPayload = {
+    ...payload,
+    f: address,
+  };
+
+  // Build and sign the message
+  const message = buildGrantMessage(completePayload);
+  const signature = isEvm
+    ? await signWithEvm(signer, message)
+    : await signWithSolana(signer, message);
+
+  return {
+    p: completePayload,
+    s: signature,
+    c: isEvm ? "evm" : "sol",
+  };
+}
+
+/**
+ * Encode a signed grant as a shareable code.
+ */
+export function grantToShareCode(grant: SignedGrant): string {
+  const json = JSON.stringify(grant);
+  return `${SHARE_CODE_PREFIX}${Buffer.from(json).toString("base64url")}`;
+}
+
+/**
+ * Decode a share code back to a signed grant.
+ */
+export function grantFromShareCode(code: string): SignedGrant {
+  if (!code.startsWith(SHARE_CODE_PREFIX)) {
+    throw new Error(`Invalid share code: must start with ${SHARE_CODE_PREFIX}`);
+  }
+
+  const encoded = code.slice(SHARE_CODE_PREFIX.length);
+  const json = Buffer.from(encoded, "base64url").toString("utf-8");
+  return JSON.parse(json) as SignedGrant;
+}

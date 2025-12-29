@@ -33,23 +33,23 @@
   "author": "zkstash",
   "license": "MIT",
   "dependencies": {
-    "@solana/kit": "^5.0.0",
+    "@solana/kit": "^5.1.0",
     "bs58": "^6.0.0",
-    "viem": "^2.41.2",
-    "x402": "^0.7.3",
-    "x402-fetch": "^0.7.3",
-    "zod": "^4.1.13"
+    "viem": "^2.43.3",
+    "x402": "^1.1.0",
+    "x402-fetch": "^1.1.0",
+    "zod": "^4.2.1"
   },
   "devDependencies": {
-    "@langchain/anthropic": "^1.2.0",
-    "@langchain/core": "^1.1.1",
-    "@langchain/openai": "^1.1.3",
-    "@modelcontextprotocol/sdk": "^1.23.0",
-    "@types/node": "^24.10.1",
-    "langchain": "^1.1.2",
+    "@langchain/anthropic": "^1.3.3",
+    "@langchain/core": "^1.1.8",
+    "@langchain/openai": "^1.2.0",
+    "@modelcontextprotocol/sdk": "^1.25.1",
+    "@types/node": "^25.0.3",
+    "langchain": "^1.2.3",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.14"
+    "vitest": "^4.0.16"
   },
   "publishConfig": {
     "access": "public"

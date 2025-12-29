@@ -109,10 +109,103 @@ Once the client is created you can call any endpoint:
 ```ts
 const memories = await client.searchMemories({
   query: "coffee",
-  filters: { userId: "user_demo", agentId: "agent_demo" },
+  filters: { agentId: "agent_demo" },
 });
 
 console.log(memories);
+```
+
+## Memory Sharing with Grants
+
+ZKStash supports permissionless memory sharing between agents using cryptographic grants. A grant is a signed message that allows one agent to access another agent's memories.
+
+### Creating a Grant
+
+```ts
+import { fromPrivateKey } from "@zkstash/sdk/rest";
+
+// Agent A creates a grant for Agent B
+const agentA = await fromPrivateKey(process.env.AGENT_A_KEY!);
+
+const { grant, shareCode } = await agentA.createGrant({
+  grantee: "0x...", // Agent B's wallet address (or Clerk userId for API key users)
+  agentId: "researcher", // Optional: limit to specific agent
+  duration: "7d", // Grant lasts 7 days (e.g., "1h", "24h", "30d")
+});
+
+// Share the code with Agent B (via any channel)
+console.log("Share this code:", shareCode);
+```
+
+> **Note**: For API key users, use their Clerk userId (e.g., `user_2abc123...`) as the grantee. This is displayed in the zkStash dashboard.
+
+### Using a Grant
+
+```ts
+import { fromPrivateKey } from "@zkstash/sdk/rest";
+
+// Agent B receives the share code and adds it
+const agentB = await fromPrivateKey(process.env.AGENT_B_KEY!);
+
+// Add grant for automatic inclusion in all searches
+agentB.addGrant(shareCode);
+
+// Now searches will include Agent A's shared memories
+const results = await agentB.searchMemories({
+  query: "research findings",
+  filters: { agentId: "researcher" },
+});
+
+// Results include source annotations
+results.memories.forEach((m) => {
+  if (m.source === "shared") {
+    console.log(`From ${m.grantor}:`, m.data);
+  }
+});
+```
+
+### Search Scopes
+
+Control which memories to search using the `scope` option:
+
+```ts
+// Search only your own memories (ignores grants)
+await client.searchMemories(
+  { query: "preferences", filters: { agentId: "my-agent" } },
+  { scope: "own" }
+);
+
+// Search only shared memories (from grants)
+await client.searchMemories(
+  { query: "findings", filters: { agentId: "researcher" } },
+  { grants: [grantFromResearcher], scope: "shared" }
+);
+
+// Search both own + shared (default)
+await client.searchMemories(
+  { query: "everything", filters: { agentId: "any" } },
+  { grants: [grantFromA] } // scope defaults to "all"
+);
+```
+
+### Grant Management
+
+```ts
+// Add a grant (accepts SignedGrant object or share code string)
+client.addGrant(shareCode);
+client.addGrant(grantObject);
+
+// Remove a grant
+client.removeGrant(grantObject);
+
+// Get all instance grants
+const grants = client.getInstanceGrants();
+
+// Pass grants per-request without storing them
+await client.searchMemories(
+  { query: "...", filters: { agentId: "..." } },
+  { grants: [oneTimeGrant] }
+);
 ```
 
 ## Development

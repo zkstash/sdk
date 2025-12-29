@@ -1,13 +1,11 @@
 import { randomUUID } from "crypto";
 import { fromPrivateKey } from "../src/rest.js";
 
-import type { PaymentRequirements } from "x402/types";
+import type { PaymentRequirements } from "x402/dist/esm/types/index.mjs";
 
-const TEST_PRIVATE_KEY = process.env.TEST_PRIVATE_KEY;
-
-if (!TEST_PRIVATE_KEY) {
-  throw new Error("TEST_PRIVATE_KEY environment variable is required");
-}
+// Test private keys (DO NOT USE IN PRODUCTION)
+const TEST_PRIVATE_KEY =
+  "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"; // Hardhat default
 
 const client = await fromPrivateKey(TEST_PRIVATE_KEY, {
   payment: {

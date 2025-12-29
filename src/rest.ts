@@ -3,9 +3,21 @@ import { createHash } from "crypto";
 
 import { wrapFetchWithPayment, type Signer as X402Signer } from "x402-fetch";
 
-import type { PaymentConfig } from "./types.js";
+import type {
+  PaymentConfig,
+  SignedGrant,
+  CreateGrantOptions,
+} from "./types.js";
 
-import { signWithEvm, signWithSolana, signerFromPrivateKey } from "./utils.js";
+import {
+  signWithEvm,
+  signWithSolana,
+  signerFromPrivateKey,
+  signGrant,
+  grantToShareCode,
+  grantFromShareCode,
+  parseDuration,
+} from "./utils.js";
 
 // ------------------------------
 
@@ -17,7 +29,7 @@ type ConversationMessage = {
 
 /**
  * Direct memory input (bypasses LLM extraction).
- * 
+ *
  * ID Behavior:
  * - Single-cardinality schemas: ID is auto-generated on the server. Just send kind + data.
  * - Multiple-cardinality schemas: Omit id to create, include id to update existing.
@@ -55,6 +67,18 @@ type SearchMemoriesPayload = {
   mode?: "raw" | "answer" | "map";
 };
 
+type SearchMemoriesOptions = {
+  /** Additional grants to include for this request */
+  grants?: SignedGrant[];
+  /**
+   * Search scope - controls which namespaces to search.
+   * - "own": Search only your own namespace (ignores grants)
+   * - "shared": Search only granted namespaces (requires grants)
+   * - "all": Search both own and granted namespaces (default)
+   */
+  scope?: "own" | "shared" | "all";
+};
+
 type CreateSchemaPayload = {
   name: string;
   description: string;
@@ -87,6 +111,9 @@ export class ZkStash {
   private readonly signer?: X402Signer;
   private readonly apiKey?: string;
   private readonly fetchFn: FetchLike;
+
+  /** Grants stored in this instance for automatic inclusion in searches */
+  private instanceGrants: SignedGrant[] = [];
 
   constructor(opts: ZkStashOptions) {
     this.baseUrl = opts.baseUrl?.replace(/\/$/, "") || "https://api.zkstash.ai";
@@ -138,7 +165,7 @@ export class ZkStash {
   /**
    * Store structured memories directly without LLM extraction.
    * Use this when you already have structured data (e.g., from agent tool calls).
-   * 
+   *
    * @example
    * ```typescript
    * await client.storeMemories("agent-1", [
@@ -175,7 +202,38 @@ export class ZkStash {
     });
   }
 
-  searchMemories(params: SearchMemoriesPayload) {
+  /**
+   * Search for memories.
+   *
+   * @param params - Search parameters (query, filters, mode)
+   * @param options - Optional settings for grants and search scope
+   * @returns Search results with source annotations
+   *
+   * @example
+   * ```typescript
+   * // Search your own memories only
+   * await client.searchMemories(
+   *   { query: "preferences", filters: { agentId: "my-agent" } },
+   *   { scope: "own" }
+   * );
+   *
+   * // Search only shared memories (from grants)
+   * await client.searchMemories(
+   *   { query: "findings", filters: { agentId: "researcher" } },
+   *   { grants: [grantFromResearcher], scope: "shared" }
+   * );
+   *
+   * // Search both (default)
+   * await client.searchMemories(
+   *   { query: "everything", filters: { agentId: "any" } },
+   *   { grants: [grantFromA, grantFromB] }  // scope defaults to "all"
+   * );
+   * ```
+   */
+  searchMemories(
+    params: SearchMemoriesPayload,
+    options?: SearchMemoriesOptions
+  ) {
     const qs = new URLSearchParams({
       query: params.query,
       agentId: params.filters.agentId,
@@ -192,8 +250,29 @@ export class ZkStash {
     if (params.mode) {
       qs.set("mode", params.mode);
     }
+
+    // Set search scope
+    const scope = options?.scope ?? "all";
+    if (scope !== "all") {
+      qs.set("scope", scope);
+    }
+
+    // Collect grants to include in header (skip if scope is "own")
+    const grantsToInclude =
+      scope === "own"
+        ? []
+        : [...this.instanceGrants, ...(options?.grants ?? [])];
+
+    const extraHeaders: Record<string, string> = {};
+    if (grantsToInclude.length > 0) {
+      extraHeaders["x-grants"] = Buffer.from(
+        JSON.stringify(grantsToInclude)
+      ).toString("base64");
+    }
+
     return this.request(`/memories/search?${qs.toString()}`, {
       method: "GET",
+      headers: extraHeaders,
     });
   }
 
@@ -261,11 +340,116 @@ export class ZkStash {
     });
   }
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Grant Methods (Memory Sharing)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Create a signed grant to share memories with another agent.
+   * This is done locally (no API call) - the signature is the proof.
+   *
+   * @example
+   * ```typescript
+   * const { grant, shareCode } = await client.createGrant({
+   *   grantee: "0xBBB...",
+   *   agentId: "researcher",  // optional: scope to specific agent
+   *   expiresIn: "7d",        // or expiresAt: timestamp
+   * });
+   *
+   * // Share the grant code with the other agent
+   * console.log(shareCode);  // "zkg1_..."
+   * ```
+   */
+  async createGrant(options: CreateGrantOptions): Promise<{
+    grant: SignedGrant;
+    shareCode: string;
+  }> {
+    if (!this.signer) {
+      throw new Error(
+        "Signer required to create grants. Use fromPrivateKey or fromSigner."
+      );
+    }
+
+    // Calculate expiry
+    let expiresAt: number;
+    if (options.expiresAt) {
+      expiresAt = options.expiresAt;
+    } else if (options.expiresIn) {
+      const seconds =
+        typeof options.expiresIn === "number"
+          ? options.expiresIn
+          : parseDuration(options.expiresIn);
+      expiresAt = Math.floor(Date.now() / 1000) + seconds;
+    } else {
+      // Default: 7 days
+      expiresAt = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60;
+    }
+
+    const grant = await signGrant(this.signer, {
+      g: options.grantee,
+      a: options.agentId,
+      e: expiresAt,
+    });
+
+    return {
+      grant,
+      shareCode: grantToShareCode(grant),
+    };
+  }
+
+  /**
+   * Add a grant to this instance for automatic inclusion in searches.
+   * Grants added this way are sent with every search request.
+   *
+   * @param grantOrCode - A SignedGrant object or a share code string
+   */
+  addGrant(grantOrCode: SignedGrant | string): void {
+    const grant =
+      typeof grantOrCode === "string"
+        ? grantFromShareCode(grantOrCode)
+        : grantOrCode;
+
+    // Avoid duplicates
+    const exists = this.instanceGrants.some(
+      (g) =>
+        g.p.f === grant.p.f &&
+        g.p.g === grant.p.g &&
+        g.p.a === grant.p.a &&
+        g.p.e === grant.p.e
+    );
+
+    if (!exists) {
+      this.instanceGrants.push(grant);
+    }
+  }
+
+  /**
+   * Remove a grant from this instance.
+   */
+  removeGrant(grant: SignedGrant): void {
+    this.instanceGrants = this.instanceGrants.filter(
+      (g) =>
+        !(
+          g.p.f === grant.p.f &&
+          g.p.g === grant.p.g &&
+          g.p.a === grant.p.a &&
+          g.p.e === grant.p.e
+        )
+    );
+  }
+
+  /**
+   * Get all grants stored in this instance.
+   */
+  getInstanceGrants(): SignedGrant[] {
+    return [...this.instanceGrants];
+  }
+
   // ----- private helpers -----
 
   private async request<T = any>(
     path: string,
-    opts: { method: string; body?: unknown }
+    opts: { method: string; body?: unknown; headers?: Record<string, string> }
   ): Promise<T> {
     const method = opts.method.toUpperCase();
     const bodyJson =
@@ -281,6 +465,7 @@ export class ZkStash {
     const headers: Record<string, string> = {
       "content-type": "application/json",
       ...authHeaders,
+      ...(opts.headers ?? {}),
     };
 
     try {
