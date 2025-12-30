@@ -41,6 +41,10 @@ type DirectMemory = {
   data: Record<string, unknown>;
   /** Optional ID - only needed for updating multiple-cardinality memories */
   id?: string;
+  /** TTL duration string (e.g., "1h", "24h", "7d") */
+  ttl?: string;
+  /** Explicit expiry timestamp in milliseconds */
+  expiresAt?: number;
 };
 
 type CreateMemoryPayload = {
@@ -49,11 +53,16 @@ type CreateMemoryPayload = {
   schemas?: string[];
   conversation?: ConversationMessage[];
   memories?: DirectMemory[];
+  /** Default TTL for all memories in this request */
+  ttl?: string;
+  /** Default expiry timestamp for all memories in this request */
+  expiresAt?: number;
 };
 
 type PatchMemoryPayload = {
   tags?: string[];
-  extendLease?: boolean;
+  /** Set expiry timestamp (ms), or null to remove expiry and make permanent */
+  expiresAt?: number | null;
 };
 
 type SearchMemoriesPayload = {
@@ -168,22 +177,33 @@ export class ZkStash {
    *
    * @example
    * ```typescript
+   * // Basic usage
    * await client.storeMemories("agent-1", [
    *   { kind: "UserProfile", data: { name: "Alice", age: 30 } },
    *   { kind: "Preference", data: { category: "food", value: "vegetarian" } }
    * ]);
+   *
+   * // With TTL (expires in 24 hours)
+   * await client.storeMemories("agent-1", [
+   *   { kind: "SessionContext", data: { task: "booking" }, ttl: "24h" }
+   * ]);
+   *
+   * // With default TTL for all memories
+   * await client.storeMemories("agent-1", memories, { ttl: "7d" });
    * ```
    */
   storeMemories(
     agentId: string,
     memories: DirectMemory[],
-    options?: { threadId?: string }
+    options?: { threadId?: string; ttl?: string; expiresAt?: number }
   ) {
     return this.request("/memories", {
       method: "POST",
       body: {
         agentId,
         threadId: options?.threadId,
+        ttl: options?.ttl,
+        expiresAt: options?.expiresAt,
         memories,
       },
     });
@@ -443,6 +463,107 @@ export class ZkStash {
    */
   getInstanceGrants(): SignedGrant[] {
     return [...this.instanceGrants];
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Batch Operations
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Search multiple queries in parallel (batch operation).
+   * More efficient than multiple individual searches.
+   *
+   * @example
+   * ```typescript
+   * const results = await client.batchSearchMemories([
+   *   { query: "user preferences", filters: { agentId: "assistant" } },
+   *   { query: "recent interactions", filters: { agentId: "assistant" } },
+   * ]);
+   * // results.results[0].memories, results.results[1].memories
+   * ```
+   */
+  batchSearchMemories(
+    queries: Array<{
+      query: string;
+      filters: {
+        agentId?: string;
+        threadId?: string;
+        kind?: string;
+        tags?: string[];
+      };
+    }>,
+    options?: SearchMemoriesOptions
+  ) {
+    const scope = options?.scope ?? "all";
+
+    // Collect grants to include in header
+    const grantsToInclude =
+      scope === "own"
+        ? []
+        : [...this.instanceGrants, ...(options?.grants ?? [])];
+
+    const extraHeaders: Record<string, string> = {};
+    if (grantsToInclude.length > 0) {
+      extraHeaders["x-grants"] = Buffer.from(
+        JSON.stringify(grantsToInclude)
+      ).toString("base64");
+    }
+
+    return this.request("/memories/batch/search", {
+      method: "POST",
+      body: { queries, scope },
+      headers: extraHeaders,
+    });
+  }
+
+  /**
+   * Delete multiple memories by ID (batch operation).
+   *
+   * @example
+   * ```typescript
+   * const result = await client.batchDeleteMemories([
+   *   "mem_abc123",
+   *   "mem_def456",
+   * ]);
+   * // result.deleted = 2
+   * ```
+   */
+  batchDeleteMemories(ids: string[]) {
+    return this.request<{ success: boolean; deleted: number }>(
+      "/memories/batch/delete",
+      {
+        method: "POST",
+        body: { ids },
+      }
+    );
+  }
+
+  /**
+   * Update multiple memories with the same changes (batch operation).
+   *
+   * @example
+   * ```typescript
+   * // Add tags to multiple memories
+   * await client.batchUpdateMemories(
+   *   ["mem_abc123", "mem_def456"],
+   *   { tags: ["archived", "q4-2024"] }
+   * );
+   *
+   * // Set expiry on multiple memories
+   * await client.batchUpdateMemories(
+   *   ["mem_abc123", "mem_def456"],
+   *   { expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000 } // 7 days
+   * );
+   * ```
+   */
+  batchUpdateMemories(ids: string[], update: PatchMemoryPayload) {
+    return this.request<{ success: boolean; updated: number }>(
+      "/memories/batch/update",
+      {
+        method: "POST",
+        body: { ids, update },
+      }
+    );
   }
 
   // ----- private helpers -----

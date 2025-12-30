@@ -115,6 +115,97 @@ const memories = await client.searchMemories({
 console.log(memories);
 ```
 
+## Memory TTL (Time-to-Live)
+
+Memories can have an optional expiry time. Expired memories are automatically cleaned up.
+
+### Creating Memories with TTL
+
+```ts
+// Per-memory TTL
+await client.storeMemories("agent-1", [
+  { kind: "SessionContext", data: { task: "booking" }, ttl: "24h" },
+  { kind: "Reminder", data: { text: "Follow up" }, ttl: "1h" },
+]);
+
+// Default TTL for all memories in request
+await client.storeMemories(
+  "agent-1",
+  [
+    { kind: "SessionContext", data: { task: "booking" } },
+    { kind: "Preference", data: { color: "blue" } },
+  ],
+  { ttl: "7d" }
+);
+
+// Using explicit timestamp
+await client.storeMemories("agent-1", [
+  {
+    kind: "Meeting",
+    data: { title: "Sync" },
+    expiresAt: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
+  },
+]);
+```
+
+### Updating Memory Expiry
+
+```ts
+// Set new expiry
+await client.updateMemory("mem_abc123", {
+  expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days from now
+});
+
+// Remove expiry (make permanent)
+await client.updateMemory("mem_abc123", {
+  expiresAt: null,
+});
+```
+
+## Batch Operations
+
+For better performance with multiple memories, use batch operations.
+
+### Batch Search
+
+```ts
+const results = await client.batchSearchMemories([
+  { query: "user preferences", filters: { agentId: "assistant" } },
+  { query: "recent tasks", filters: { agentId: "assistant" } },
+  { query: "meeting notes", filters: { agentId: "assistant" } },
+]);
+
+// results.results[0].memories - first query results
+// results.results[1].memories - second query results
+```
+
+### Batch Delete
+
+```ts
+const result = await client.batchDeleteMemories([
+  "mem_abc123",
+  "mem_def456",
+  "mem_ghi789",
+]);
+console.log(`Deleted ${result.deleted} memories`);
+```
+
+### Batch Update
+
+```ts
+// Tag multiple memories
+await client.batchUpdateMemories(
+  ["mem_abc123", "mem_def456"],
+  { tags: ["archived", "q4-2024"] }
+);
+
+// Set expiry on multiple memories
+await client.batchUpdateMemories(
+  ["mem_abc123", "mem_def456"],
+  { expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000 }
+);
+```
+
 ## Memory Sharing with Grants
 
 ZKStash supports permissionless memory sharing between agents using cryptographic grants. A grant is a signed message that allows one agent to access another agent's memories.
