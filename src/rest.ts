@@ -7,6 +7,9 @@ import type {
   PaymentConfig,
   SignedGrant,
   CreateGrantOptions,
+  CreateAttestationOptions,
+  Attestation,
+  VerifyAttestationResult,
 } from "./types.js";
 
 import {
@@ -219,6 +222,110 @@ export class ZkStash {
   deleteMemory(id: string) {
     return this.request(`/memories/${id}`, {
       method: "DELETE",
+    });
+  }
+
+  /**
+   * Verify a memory's integrity by checking its content hash.
+   * Returns whether the stored content matches the original hash.
+   *
+   * @param id - The memory ID to verify
+   * @returns Integrity verification result
+   *
+   * @example
+   * ```typescript
+   * const result = await client.verifyMemory("mem_abc123");
+   * if (result.integrity.intact) {
+   *   console.log("Memory is intact");
+   * } else {
+   *   console.log("Memory may have been tampered with");
+   * }
+   * ```
+   */
+  verifyMemory(id: string): Promise<{
+    success: boolean;
+    memoryId: string;
+    integrity: {
+      intact: boolean;
+      storedHash: string | null;
+      computedHash: string;
+      verifiedAt: number;
+    };
+  }> {
+    return this.request(`/memories/${id}/verify`, {
+      method: "GET",
+    });
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Attestations
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Create a signed attestation about your memories.
+   * Attestations allow you to prove claims to other agents without
+   * revealing the actual memory content.
+   *
+   * @param options - Attestation options
+   * @returns Signed attestation with zkStash public key
+   *
+   * @example
+   * ```typescript
+   * // Prove you have memories matching a query
+   * const attestation = await client.createAttestation({
+   *   claim: "has_memories_matching",
+   *   query: "user preferences",
+   *   filters: { agentId: "my-agent" },
+   * });
+   *
+   * // Prove you have at least 10 memories
+   * const attestation = await client.createAttestation({
+   *   claim: "memory_count_gte",
+   *   threshold: 10,
+   * });
+   *
+   * // Share attestation with another agent
+   * anotherAgent.verifyAttestation(attestation);
+   * ```
+   */
+  createAttestation(options: CreateAttestationOptions): Promise<{
+    success: boolean;
+    attestation: Attestation;
+    signature: string;
+    publicKey: string;
+  }> {
+    return this.request("/attestations", {
+      method: "POST",
+      body: options,
+    });
+  }
+
+  /**
+   * Verify an attestation signature.
+   * This can verify attestations from any zkStash user.
+   *
+   * @param attestation - The attestation object
+   * @param signature - The signature to verify
+   * @returns Verification result
+   *
+   * @example
+   * ```typescript
+   * const { valid, reason } = await client.verifyAttestation(
+   *   receivedAttestation.attestation,
+   *   receivedAttestation.signature
+   * );
+   * if (valid) {
+   *   console.log("Attestation is valid");
+   * }
+   * ```
+   */
+  verifyAttestation(
+    attestation: Attestation,
+    signature: string
+  ): Promise<VerifyAttestationResult> {
+    return this.request("/attestations/verify", {
+      method: "POST",
+      body: { attestation, signature },
     });
   }
 

@@ -94,3 +94,79 @@ export interface CreateGrantOptions {
  */
 export const GRANT_MESSAGE_PREFIX = "zkstash:grant:v1:";
 export const SHARE_CODE_PREFIX = "zkg1_";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Attestation Types
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Attestation claim types supported by zkStash.
+ */
+export type AttestationClaim =
+  | "has_memories_matching"  // Agent has memories matching a query
+  | "memory_count_gte"       // Agent has >= N memories
+  | "has_schema"             // Agent has a registered schema
+  | "shared_memories_from";  // Memories came from specific grantor
+
+/**
+ * Attestation - what zkStash attests to.
+ */
+export interface Attestation {
+  claim: AttestationClaim;
+  params: {
+    query?: string;
+    filters?: {
+      agentId?: string;
+      kind?: string;
+      tags?: string[];
+    };
+    threshold?: number;
+    schemaName?: string;
+    grantor?: string;
+    memoryHashes?: string[];
+  };
+  result: {
+    satisfied: boolean;
+    matchCount?: number;
+    namespace: string;  // Hashed userId for privacy
+  };
+  issuedAt: number;
+  expiresAt: number;
+  issuer: "zkstash.ai";
+}
+
+/**
+ * Signed attestation - attestation with zkStash signature.
+ */
+export interface SignedAttestation {
+  attestation: Attestation;
+  signature: string;
+}
+
+/**
+ * Options for creating an attestation.
+ */
+export interface CreateAttestationOptions {
+  claim: AttestationClaim;
+  query?: string;
+  filters?: {
+    agentId?: string;
+    kind?: string;
+    tags?: string[];
+  };
+  threshold?: number;
+  schemaName?: string;
+  /** Expiration duration (e.g., "24h", "7d"). Defaults to "24h". */
+  expiresIn?: string;
+}
+
+/**
+ * Result of attestation verification.
+ */
+export interface VerifyAttestationResult {
+  success: boolean;
+  valid: boolean;
+  reason: string | null;
+  attestation: Attestation | null;
+  publicKey: string;
+}
