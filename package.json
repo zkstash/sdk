@@ -33,6 +33,8 @@
   "author": "zkstash",
   "license": "MIT",
   "dependencies": {
+    "@noble/ed25519": "^2.2.3",
+    "@noble/hashes": "^1.7.2",
     "@solana/kit": "^5.1.0",
     "bs58": "^6.0.0",
     "viem": "^2.43.3",

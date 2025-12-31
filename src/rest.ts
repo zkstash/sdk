@@ -9,7 +9,6 @@ import type {
   CreateGrantOptions,
   CreateAttestationOptions,
   Attestation,
-  VerifyAttestationResult,
 } from "./types.js";
 
 import {
@@ -20,6 +19,8 @@ import {
   grantToShareCode,
   grantFromShareCode,
   parseDuration,
+  stableStringify,
+  verifyEd25519,
 } from "./utils.js";
 
 // ------------------------------
@@ -127,6 +128,9 @@ export class ZkStash {
   /** Grants stored in this instance for automatic inclusion in searches */
   private instanceGrants: SignedGrant[] = [];
 
+  /** Cached attestation public key for local verification */
+  private cachedPublicKey: string | null = null;
+
   constructor(opts: ZkStashOptions) {
     this.baseUrl = opts.baseUrl?.replace(/\/$/, "") || "https://api.zkstash.ai";
     this.signer = opts.signer;
@@ -226,35 +230,67 @@ export class ZkStash {
   }
 
   /**
-   * Verify a memory's integrity by checking its content hash.
-   * Returns whether the stored content matches the original hash.
+   * Verify a memory's integrity locally by recomputing its content hash.
+   * No API call required - verification is done entirely client-side.
    *
-   * @param id - The memory ID to verify
+   * @param memory - The memory object (from search or get)
    * @returns Integrity verification result
    *
    * @example
    * ```typescript
-   * const result = await client.verifyMemory("mem_abc123");
-   * if (result.integrity.intact) {
+   * const { memory } = await client.getMemory("mem_abc123");
+   * const result = client.verifyMemoryIntegrity(memory);
+   * if (result.intact) {
    *   console.log("Memory is intact");
    * } else {
    *   console.log("Memory may have been tampered with");
+   *   console.log("Stored:", result.storedHash);
+   *   console.log("Computed:", result.computedHash);
    * }
    * ```
    */
-  verifyMemory(id: string): Promise<{
-    success: boolean;
-    memoryId: string;
-    integrity: {
-      intact: boolean;
-      storedHash: string | null;
-      computedHash: string;
-      verifiedAt: number;
+  verifyMemoryIntegrity(memory: {
+    kind: string;
+    data?: Record<string, unknown>;
+    metadata?: Record<string, unknown>;
+  }): {
+    intact: boolean;
+    storedHash: string | null;
+    computedHash: string;
+    verifiedAt: number;
+  } {
+    const metadata = memory.metadata || {};
+    const storedHash = (metadata.contentHash as string) || null;
+    const agentId = metadata.agentId as string;
+
+    // Extract data - either from memory.data or from metadata (excluding system fields)
+    const systemFields = [
+      "agentId",
+      "threadId",
+      "kind",
+      "tags",
+      "confidence",
+      "expiresAt",
+      "updatedAt",
+      "contentHash",
+    ];
+    const data =
+      memory.data ||
+      Object.fromEntries(
+        Object.entries(metadata).filter(([k]) => !systemFields.includes(k))
+      );
+
+    // Compute hash: sha256(stableStringify({ kind, data, agentId }))
+    const content = stableStringify({ kind: memory.kind, data, agentId });
+    const computedHash =
+      "0x" + createHash("sha256").update(content).digest("hex");
+
+    return {
+      intact: storedHash === computedHash,
+      storedHash,
+      computedHash,
+      verifiedAt: Date.now(),
     };
-  }> {
-    return this.request(`/memories/${id}/verify`, {
-      method: "GET",
-    });
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -301,12 +337,12 @@ export class ZkStash {
   }
 
   /**
-   * Verify an attestation signature.
-   * This can verify attestations from any zkStash user.
+   * Verify an attestation signature locally using Ed25519.
+   * The public key is fetched once from /.well-known/zkstash-keys.json and cached.
    *
    * @param attestation - The attestation object
    * @param signature - The signature to verify
-   * @returns Verification result
+   * @returns Verification result with valid flag and reason
    *
    * @example
    * ```typescript
@@ -315,18 +351,34 @@ export class ZkStash {
    *   receivedAttestation.signature
    * );
    * if (valid) {
-   *   console.log("Attestation is valid");
+   *   console.log("Attestation verified");
+   * } else {
+   *   console.log("Invalid:", reason); // "invalid_signature" or "attestation_expired"
    * }
    * ```
    */
-  verifyAttestation(
+  async verifyAttestation(
     attestation: Attestation,
     signature: string
-  ): Promise<VerifyAttestationResult> {
-    return this.request("/attestations/verify", {
-      method: "POST",
-      body: { attestation, signature },
-    });
+  ): Promise<{ valid: boolean; reason: string | null }> {
+    // Check expiry first
+    const now = Math.floor(Date.now() / 1000);
+    if (attestation.expiresAt < now) {
+      return { valid: false, reason: "attestation_expired" };
+    }
+
+    // Fetch and cache public key if needed
+    if (!this.cachedPublicKey) {
+      const res = await fetch(`${this.baseUrl}/.well-known/zkstash-keys.json`);
+      const data = await res.json();
+      this.cachedPublicKey = data.attestationPublicKey;
+    }
+
+    // Verify Ed25519 signature locally
+    const message = stableStringify(attestation);
+    const valid = verifyEd25519(signature, message, this.cachedPublicKey!);
+
+    return { valid, reason: valid ? null : "invalid_signature" };
   }
 
   /**

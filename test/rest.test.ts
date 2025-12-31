@@ -103,33 +103,48 @@ describe("ZkStash REST Client", () => {
       );
     });
 
-    it("should verify memory integrity", async () => {
-      const mockResponse = {
-        success: true,
-        memoryId: "mem_123",
-        integrity: {
-          intact: true,
-          storedHash: "0xabc123",
-          computedHash: "0xabc123",
-          verifiedAt: 1703123456789,
+    it("should verify memory integrity locally", () => {
+      // stableStringify produces: {"agentId":"agent-007","data":{"name":"Alice"},"kind":"UserProfile"}
+      const expectedContent = '{"agentId":"agent-007","data":{"name":"Alice"},"kind":"UserProfile"}';
+      const expectedHash =
+        "0x" +
+        require("crypto")
+          .createHash("sha256")
+          .update(expectedContent)
+          .digest("hex");
+
+      const memory = {
+        kind: "UserProfile",
+        metadata: {
+          agentId: "agent-007",
+          name: "Alice",
+          contentHash: expectedHash,
         },
       };
 
-      fetchMock.mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockResponse,
-      });
+      const result = client.verifyMemoryIntegrity(memory);
 
-      const result = await client.verifyMemory("mem_123");
+      // No API call should be made
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(result.intact).toBe(true);
+      expect(result.storedHash).toBe(result.computedHash);
+    });
 
-      expect(fetchMock).toHaveBeenCalledWith(
-        `${baseUrl}/memories/mem_123/verify`,
-        expect.objectContaining({
-          method: "GET",
-        })
-      );
-      expect(result.integrity.intact).toBe(true);
-      expect(result.integrity.storedHash).toBe("0xabc123");
+    it("should detect tampered memory", () => {
+      const memory = {
+        kind: "UserProfile",
+        metadata: {
+          agentId: "agent-007",
+          name: "Alice",
+          contentHash: "0xfakehash123", // Wrong hash
+        },
+      };
+
+      const result = client.verifyMemoryIntegrity(memory);
+
+      expect(result.intact).toBe(false);
+      expect(result.storedHash).toBe("0xfakehash123");
+      expect(result.computedHash).not.toBe(result.storedHash);
     });
   });
 
@@ -250,40 +265,37 @@ describe("ZkStash REST Client", () => {
       expect(result.attestation.result.matchCount).toBe(15);
     });
 
-    it("should verify an attestation", async () => {
+    it("should verify an attestation locally", async () => {
+      // Future timestamp so attestation is not expired
+      const futureExpiry = Math.floor(Date.now() / 1000) + 86400;
       const attestation = {
         claim: "has_memories_matching" as const,
         params: { query: "recipes" },
         result: { satisfied: true, matchCount: 5, namespace: "0x123" },
-        issuedAt: 1703123456,
-        expiresAt: 1703209856,
+        issuedAt: Math.floor(Date.now() / 1000),
+        expiresAt: futureExpiry,
         issuer: "zkstash.ai" as const,
       };
 
+      // Mock the well-known endpoint to return a public key
       fetchMock.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
-          success: true,
-          valid: true,
-          reason: null,
-          attestation,
-          publicKey: "zkstash.ai",
+          attestationPublicKey: "0x" + "ab".repeat(32), // Mock 32-byte public key
+          algorithm: "Ed25519",
         }),
       });
 
-      const result = await client.verifyAttestation(attestation, "0xsig123");
+      // Use a fake signature - it will fail verification but we're testing the flow
+      const result = await client.verifyAttestation(attestation, "0x" + "cd".repeat(64));
 
+      // Should have fetched the public key from well-known endpoint
       expect(fetchMock).toHaveBeenCalledWith(
-        `${baseUrl}/attestations/verify`,
-        expect.objectContaining({
-          method: "POST",
-          body: JSON.stringify({
-            attestation,
-            signature: "0xsig123",
-          }),
-        })
+        `${baseUrl}/.well-known/zkstash-keys.json`
       );
-      expect(result.valid).toBe(true);
+      // Signature won't match since it's fake, but the flow should work
+      expect(result.valid).toBe(false);
+      expect(result.reason).toBe("invalid_signature");
     });
 
     it("should return invalid for expired attestation", async () => {
@@ -292,23 +304,15 @@ describe("ZkStash REST Client", () => {
         params: { query: "recipes" },
         result: { satisfied: true, matchCount: 5, namespace: "0x123" },
         issuedAt: 1703123456,
-        expiresAt: 1703123456, // Already expired
+        expiresAt: 1703123456, // Already expired (in the past)
         issuer: "zkstash.ai" as const,
       };
 
-      fetchMock.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          success: true,
-          valid: false,
-          reason: "attestation_expired",
-          attestation: null,
-          publicKey: "zkstash.ai",
-        }),
-      });
-
+      // Local verification checks expiry first, no API call needed
       const result = await client.verifyAttestation(attestation, "0xsig123");
 
+      // Should NOT have made any fetch calls - expiry check happens first
+      expect(fetchMock).not.toHaveBeenCalled();
       expect(result.valid).toBe(false);
       expect(result.reason).toBe("attestation_expired");
     });

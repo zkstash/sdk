@@ -6,10 +6,15 @@ import {
   createKeyPairSignerFromBytes,
   createKeyPairSignerFromPrivateKeyBytes,
 } from "@solana/kit";
+import * as ed from "@noble/ed25519";
+import { sha512 } from "@noble/hashes/sha512";
 
 import type { Signer as X402Signer } from "x402-fetch";
 
 import bs58 from 'bs58';
+
+// Configure ed25519 to use sha512 (required for Node.js)
+ed.etc.sha512Sync = (...m: Uint8Array[]) => sha512(ed.etc.concatBytes(...m));
 
 // Type representing a Solana signer with message signing capability
 type SvmSigner = {
@@ -159,4 +164,46 @@ export function grantFromShareCode(code: string): SignedGrant {
   const encoded = code.slice(SHARE_CODE_PREFIX.length);
   const json = Buffer.from(encoded, "base64url").toString("utf-8");
   return JSON.parse(json) as SignedGrant;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Attestation Utilities
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Deterministic JSON serialization with sorted keys.
+ * Used to create consistent message for signing/verification.
+ */
+export function stableStringify(obj: unknown): string {
+  if (obj === null || typeof obj !== "object") {
+    return JSON.stringify(obj);
+  }
+
+  if (Array.isArray(obj)) {
+    return "[" + obj.map(stableStringify).join(",") + "]";
+  }
+
+  const sortedKeys = Object.keys(obj).sort();
+  const pairs = sortedKeys.map(
+    (key) => `${JSON.stringify(key)}:${stableStringify((obj as Record<string, unknown>)[key])}`
+  );
+  return "{" + pairs.join(",") + "}";
+}
+
+/**
+ * Verify an Ed25519 signature.
+ */
+export function verifyEd25519(
+  signature: string,
+  message: string,
+  publicKey: string
+): boolean {
+  try {
+    const sigBytes = Buffer.from(signature.slice(2), "hex");
+    const pubKeyBytes = Buffer.from(publicKey.slice(2), "hex");
+    const messageBytes = Buffer.from(message);
+    return ed.verify(sigBytes, messageBytes, pubKeyBytes);
+  } catch {
+    return false;
+  }
 }
