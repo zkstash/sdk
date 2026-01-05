@@ -4,6 +4,28 @@ import type {
   X402Config,
   MultiNetworkSigner as X402MultiNetworkSigner,
 } from "x402-fetch";
+import { z } from "zod";
+import {
+  CreateMemoryRequestSchema,
+  ConversationMessageSchema,
+  CreateMemoryResponseSchema,
+  UpdateMemoryRequestSchema,
+  SearchMemoriesFiltersSchema,
+  SearchMemoriesRequestSchema,
+  MemorySchema,
+  MemoriesResponseSchema,
+  CreateSchemaRequestSchema,
+  SchemaSchema,
+  SchemaResponseSchema,
+  SchemasResponseSchema,
+  JsonSchemaValidator,
+  MemoryResponseSchema,
+  ExtendedSearchSchema,
+  UpdateSchemaRequestSchema,
+  RegisterSchemaRequest,
+  SchemaUpdatedResponseSchema,
+  DirectMemorySchema,
+} from "./schemas";
 
 /**
  * Payment configuration for x402 requests.
@@ -170,3 +192,30 @@ export interface VerifyAttestationResult {
   attestation: Attestation | null;
   publicKey: string;
 }
+
+// -----------------------------------------------------------------------------
+// Inferred Types from Zod Schemas
+// -----------------------------------------------------------------------------
+
+export type ConversationMessage = z.infer<typeof ConversationMessageSchema>;
+export type DirectMemory = z.infer<typeof DirectMemorySchema>;
+export type CreateMemoryRequest = z.infer<typeof CreateMemoryRequestSchema>;
+export type CreateMemoryResponse = z.infer<typeof CreateMemoryResponseSchema>;
+export type UpdateMemoryRequest = z.infer<typeof UpdateMemoryRequestSchema>;
+
+export type SearchMemoriesFilters = z.infer<typeof SearchMemoriesFiltersSchema>;
+export type SearchMemoriesRequest = z.infer<typeof SearchMemoriesRequestSchema>;
+export type ExtendedSearchRequest = z.infer<typeof ExtendedSearchSchema>;
+
+export type Memory = z.infer<typeof MemorySchema>;
+export type MemoryResponse = z.infer<typeof MemoryResponseSchema>;
+export type MemoriesResponse = z.infer<typeof MemoriesResponseSchema>;
+
+export type JsonSchema = z.infer<typeof JsonSchemaValidator>;
+export type RegisterSchema = z.infer<typeof RegisterSchemaRequest>;
+export type CreateSchemaRequest = z.infer<typeof CreateSchemaRequestSchema>;
+export type UpdateSchemaRequest = z.infer<typeof UpdateSchemaRequestSchema>;
+export type Schema = z.infer<typeof SchemaSchema>;
+export type SchemaResponse = z.infer<typeof SchemaResponseSchema>;
+export type SchemasResponse = z.infer<typeof SchemasResponseSchema>;
+export type SchemaUpdatedResponse = z.infer<typeof SchemaUpdatedResponseSchema>;

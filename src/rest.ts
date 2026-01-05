@@ -9,7 +9,38 @@ import type {
   CreateGrantOptions,
   CreateAttestationOptions,
   Attestation,
+  DirectMemory,
+  CreateMemoryRequest,
+  UpdateMemoryRequest,
+  SearchMemoriesRequest,
+  SearchMemoriesFilters,
+  ExtendedSearchRequest,
+  CreateSchemaRequest,
+  UpdateSchemaRequest,
+  MemoriesResponse,
+  SchemaResponse,
+  SchemasResponse,
 } from "./types.js";
+
+// Type aliases for easier usage in client
+
+export type ClientSearchFilters = Omit<SearchMemoriesFilters, "userId">;
+
+export type ClientSearchRequest = Omit<ExtendedSearchRequest, "filters"> & {
+  filters: ClientSearchFilters;
+};
+
+export type ClientBatchSearchQuery = Omit<SearchMemoriesRequest, "filters"> & {
+  filters: ClientSearchFilters;
+};
+
+export type CreateSchemaInput = Omit<CreateSchemaRequest, "schema"> & {
+  schema: string | z.ZodTypeAny;
+};
+
+export type UpdateSchemaInput = Omit<UpdateSchemaRequest, "schema"> & {
+  schema?: string | z.ZodTypeAny;
+};
 
 import {
   signWithEvm,
@@ -25,61 +56,6 @@ import {
 
 // ------------------------------
 
-type ConversationMessage = {
-  id?: string;
-  role: string;
-  content: string;
-};
-
-/**
- * Direct memory input (bypasses LLM extraction).
- *
- * ID Behavior:
- * - Schemas with `uniqueOn`: Auto-supersedes existing memory matching the unique fields.
- * - Schemas without `uniqueOn`: Omit id to create, include id to update existing.
- */
-type DirectMemory = {
-  /** Schema name (must be registered) */
-  kind: string;
-  /** Structured data matching the schema */
-  data: Record<string, unknown>;
-  /** Optional ID - only needed for updating memories without uniqueOn */
-  id?: string;
-  /** TTL duration string (e.g., "1h", "24h", "7d") */
-  ttl?: string;
-  /** Explicit expiry timestamp in milliseconds */
-  expiresAt?: number;
-};
-
-type CreateMemoryPayload = {
-  agentId: string;
-  threadId?: string;
-  schemas?: string[];
-  conversation?: ConversationMessage[];
-  memories?: DirectMemory[];
-  /** Default TTL for all memories in this request */
-  ttl?: string;
-  /** Default expiry timestamp for all memories in this request */
-  expiresAt?: number;
-};
-
-type PatchMemoryPayload = {
-  tags?: string[];
-  /** Set expiry timestamp (ms), or null to remove expiry and make permanent */
-  expiresAt?: number | null;
-};
-
-type SearchMemoriesPayload = {
-  query: string;
-  filters: {
-    agentId: string;
-    threadId?: string;
-    kind?: string;
-    tags?: string[];
-  };
-  mode?: "raw" | "answer" | "map";
-};
-
 type SearchMemoriesOptions = {
   /** Additional grants to include for this request */
   grants?: SignedGrant[];
@@ -92,20 +68,7 @@ type SearchMemoriesOptions = {
   scope?: "own" | "shared" | "all";
 };
 
-type CreateSchemaPayload = {
-  name: string;
-  description: string;
-  /** Fields that identify the same logical entity for auto-supersede */
-  uniqueOn?: string[];
-  schema: string | z.ZodTypeAny; // JSON string or Zod schema
-};
 
-type PatchSchemaPayload = {
-  description?: string;
-  /** Fields that identify the same logical entity for auto-supersede */
-  uniqueOn?: string[];
-  schema?: string | z.ZodTypeAny; // JSON string or Zod schema
-};
 
 // ---
 
@@ -170,7 +133,7 @@ export class ZkStash {
    * Create memories via LLM extraction from a conversation.
    * Use this when you want the AI to analyze the conversation and extract relevant facts.
    */
-  createMemory(payload: CreateMemoryPayload) {
+  createMemory(payload: CreateMemoryRequest): Promise<MemoriesResponse> {
     if (!payload.conversation && !payload.memories) {
       throw new Error("Either 'conversation' or 'memories' must be provided");
     }
@@ -205,7 +168,7 @@ export class ZkStash {
     agentId: string,
     memories: DirectMemory[],
     options?: { threadId?: string; ttl?: string; expiresAt?: number }
-  ) {
+  ): Promise<MemoriesResponse> {
     return this.request("/memories", {
       method: "POST",
       body: {
@@ -214,11 +177,11 @@ export class ZkStash {
         ttl: options?.ttl,
         expiresAt: options?.expiresAt,
         memories,
-      },
+      } as CreateMemoryRequest,
     });
   }
 
-  updateMemory(id: string, params: PatchMemoryPayload) {
+  updateMemory(id: string, params: UpdateMemoryRequest) {
     return this.request(`/memories/${id}`, {
       method: "PATCH",
       body: params,
@@ -412,13 +375,16 @@ export class ZkStash {
    * ```
    */
   searchMemories(
-    params: SearchMemoriesPayload,
+    params: ClientSearchRequest,
     options?: SearchMemoriesOptions
-  ) {
-    const qs = new URLSearchParams({
+  ): Promise<MemoriesResponse> {
+    const queryParams: Record<string, string> = {
       query: params.query,
-      agentId: params.filters.agentId,
-    });
+    };
+    if (params.filters.agentId) {
+      queryParams.agentId = params.filters.agentId;
+    }
+    const qs = new URLSearchParams(queryParams);
     if (params.filters.threadId) {
       qs.set("threadId", params.filters.threadId);
     }
@@ -457,18 +423,18 @@ export class ZkStash {
     });
   }
 
-  registerSchema(payload: CreateSchemaPayload): Promise<any>;
+  registerSchema(payload: CreateSchemaInput): Promise<SchemaResponse>;
   registerSchema(
     name: string,
     schema: z.ZodTypeAny,
     options?: { description?: string; uniqueOn?: string[] }
   ): Promise<any>;
   registerSchema(
-    payloadOrName: CreateSchemaPayload | string,
+    payloadOrName: CreateSchemaInput | string,
     schema?: z.ZodTypeAny,
     options?: { description?: string; uniqueOn?: string[] }
   ) {
-    let payload: CreateSchemaPayload;
+    let payload: CreateSchemaInput;
 
     if (typeof payloadOrName === "string") {
       if (!schema) {
@@ -502,13 +468,13 @@ export class ZkStash {
     });
   }
 
-  listSchemas() {
+  listSchemas(): Promise<SchemasResponse> {
     return this.request(`/schemas`, {
       method: "GET",
     });
   }
 
-  updateSchema(name: string, params: PatchSchemaPayload) {
+  updateSchema(name: string, params: UpdateSchemaInput) {
     return this.request(`/schemas/${name}`, {
       method: "PATCH",
       body: params,
@@ -644,17 +610,12 @@ export class ZkStash {
    * ```
    */
   batchSearchMemories(
-    queries: Array<{
-      query: string;
-      filters: {
-        agentId?: string;
-        threadId?: string;
-        kind?: string;
-        tags?: string[];
-      };
-    }>,
+    queries: ClientBatchSearchQuery[],
     options?: SearchMemoriesOptions
-  ) {
+  ): Promise<{
+    success: boolean;
+    results: Array<{ memories: MemoriesResponse["memories"] }>;
+  }> {
     const scope = options?.scope ?? "all";
 
     // Collect grants to include in header
@@ -693,11 +654,11 @@ export class ZkStash {
     input:
       | string[]
       | {
-          agentId?: string;
-          threadId?: string;
-          kind?: string;
-          tags?: string[];
-        }
+        agentId?: string;
+        threadId?: string;
+        kind?: string;
+        tags?: string[];
+      }
   ) {
     const body = Array.isArray(input) ? { ids: input } : { filters: input };
     return this.request<{ success: boolean; deleted: number }>(
@@ -727,7 +688,7 @@ export class ZkStash {
    * );
    * ```
    */
-  batchUpdateMemories(ids: string[], update: PatchMemoryPayload) {
+  batchUpdateMemories(ids: string[], update: UpdateMemoryRequest) {
     return this.request<{ success: boolean; updated: number }>(
       "/memories/batch/update",
       {
