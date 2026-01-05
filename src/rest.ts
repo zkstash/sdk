@@ -35,15 +35,15 @@ type ConversationMessage = {
  * Direct memory input (bypasses LLM extraction).
  *
  * ID Behavior:
- * - Single-cardinality schemas: ID is auto-generated on the server. Just send kind + data.
- * - Multiple-cardinality schemas: Omit id to create, include id to update existing.
+ * - Schemas with `uniqueOn`: Auto-supersedes existing memory matching the unique fields.
+ * - Schemas without `uniqueOn`: Omit id to create, include id to update existing.
  */
 type DirectMemory = {
   /** Schema name (must be registered) */
   kind: string;
   /** Structured data matching the schema */
   data: Record<string, unknown>;
-  /** Optional ID - only needed for updating multiple-cardinality memories */
+  /** Optional ID - only needed for updating memories without uniqueOn */
   id?: string;
   /** TTL duration string (e.g., "1h", "24h", "7d") */
   ttl?: string;
@@ -95,13 +95,15 @@ type SearchMemoriesOptions = {
 type CreateSchemaPayload = {
   name: string;
   description: string;
-  cardinality: "single" | "multiple";
+  /** Fields that identify the same logical entity for auto-supersede */
+  uniqueOn?: string[];
   schema: string | z.ZodTypeAny; // JSON string or Zod schema
 };
 
 type PatchSchemaPayload = {
   description?: string;
-  cardinality?: "single" | "multiple";
+  /** Fields that identify the same logical entity for auto-supersede */
+  uniqueOn?: string[];
   schema?: string | z.ZodTypeAny; // JSON string or Zod schema
 };
 
@@ -459,12 +461,12 @@ export class ZkStash {
   registerSchema(
     name: string,
     schema: z.ZodTypeAny,
-    options?: { description?: string; cardinality?: "single" | "multiple" }
+    options?: { description?: string; uniqueOn?: string[] }
   ): Promise<any>;
   registerSchema(
     payloadOrName: CreateSchemaPayload | string,
     schema?: z.ZodTypeAny,
-    options?: { description?: string; cardinality?: "single" | "multiple" }
+    options?: { description?: string; uniqueOn?: string[] }
   ) {
     let payload: CreateSchemaPayload;
 
@@ -478,7 +480,7 @@ export class ZkStash {
         name: payloadOrName,
         schema: schema,
         description: options?.description ?? `Schema for ${payloadOrName}`,
-        cardinality: options?.cardinality ?? "single",
+        uniqueOn: options?.uniqueOn,
       };
     } else {
       payload = payloadOrName;
@@ -687,12 +689,22 @@ export class ZkStash {
    * // result.deleted = 2
    * ```
    */
-  batchDeleteMemories(ids: string[]) {
+  batchDeleteMemories(
+    input:
+      | string[]
+      | {
+          agentId?: string;
+          threadId?: string;
+          kind?: string;
+          tags?: string[];
+        }
+  ) {
+    const body = Array.isArray(input) ? { ids: input } : { filters: input };
     return this.request<{ success: boolean; deleted: number }>(
       "/memories/batch/delete",
       {
         method: "POST",
-        body: { ids },
+        body,
       }
     );
   }
