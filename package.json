@@ -1,6 +1,6 @@
 {
   "name": "@zkstash/sdk",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "TypeScript SDK for zkstash - Memory layer for AI agents on EVM and Solana",
   "type": "module",
   "engines": {
