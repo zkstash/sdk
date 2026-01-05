@@ -158,7 +158,7 @@ describe("ZkStash REST Client", () => {
       await client.registerSchema({
         name: "test_schema",
         description: "A test schema",
-        cardinality: "single",
+        uniqueOn: ["kind"],
         schema: z.object({ foo: z.string() }),
       });
 

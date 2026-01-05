@@ -73,7 +73,7 @@ async function registerSchema() {
   const registerSchemaRes = await client.registerSchema({
     name: "test_schema",
     description: "Test schema",
-    cardinality: "single",
+    uniqueOn: ["kind"],
     schema: JSON.stringify({
       type: "object",
       properties: {
