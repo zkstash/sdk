@@ -13,7 +13,6 @@ import type {
   CreateMemoryRequest,
   UpdateMemoryRequest,
   SearchMemoriesRequest,
-  SearchMemoriesFilters,
   ExtendedSearchRequest,
   CreateSchemaRequest,
   UpdateSchemaRequest,
@@ -23,17 +22,6 @@ import type {
 } from "./types.js";
 
 // Type aliases for easier usage in client
-
-export type ClientSearchFilters = Omit<SearchMemoriesFilters, "userId">;
-
-export type ClientSearchRequest = Omit<ExtendedSearchRequest, "filters"> & {
-  filters: ClientSearchFilters;
-};
-
-export type ClientBatchSearchQuery = Omit<SearchMemoriesRequest, "filters"> & {
-  filters: ClientSearchFilters;
-};
-
 export type CreateSchemaInput = Omit<CreateSchemaRequest, "schema"> & {
   schema: string | z.ZodTypeAny;
 };
@@ -375,7 +363,7 @@ export class ZkStash {
    * ```
    */
   searchMemories(
-    params: ClientSearchRequest,
+    params: ExtendedSearchRequest,
     options?: SearchMemoriesOptions
   ): Promise<MemoriesResponse> {
     const queryParams: Record<string, string> = {
@@ -610,7 +598,7 @@ export class ZkStash {
    * ```
    */
   batchSearchMemories(
-    queries: ClientBatchSearchQuery[],
+    queries: SearchMemoriesRequest[],
     options?: SearchMemoriesOptions
   ): Promise<{
     success: boolean;

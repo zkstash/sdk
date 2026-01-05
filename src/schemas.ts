@@ -62,15 +62,10 @@ export const UpdateMemoryRequestSchema = z.object({
 });
 
 export const SearchMemoriesFiltersSchema = z.object({
-  userId: z.string(),
   agentId: z.string().optional(),
   threadId: z.string().optional(),
   kind: z.string().optional(),
-  tags: z.array(Tag).optional(),
-  // SOTA Memory v2 filters
-  excludeSuperseded: z.boolean().optional(), // Default: true (handled in code) - filter out superseded memories
-  eventDateFrom: z.string().datetime().optional(), // Filter events after this timestamp (ISO string)
-  eventDateTo: z.string().datetime().optional(), // Filter events before this timestamp (ISO string)
+  tags: z.array(Tag).optional()
 });
 
 export const SearchMemoriesRequestSchema = z.object({
