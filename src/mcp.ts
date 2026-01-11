@@ -36,6 +36,7 @@ import type {
  *   "your-private-key",
  *   {
  *     agentId: "my-agent",
+ *     subjectId: "my-subject", // optional
  *     threadId: "my-thread", // optional
  *     payment: {
  *       maxValue: BigInt(0.1 * 10 ** 6), // 0.1 USDC
@@ -83,6 +84,7 @@ export async function fromPrivateKey(
  *   authSigner,
  *   {
  *     agentId: "my-agent",
+ *     subjectId: "tenant-a", // optional
  *     threadId: "my-thread", // optional
  *     payment: {
  *       signer: paymentSigner,
@@ -111,6 +113,7 @@ export async function fromSigner(
 ): Promise<Client> {
   const {
     agentId,
+    subjectId,
     threadId,
     payment,
     mcpUrl = "https://zkstash.ai/mcp",
@@ -146,6 +149,7 @@ export async function fromSigner(
       "x-wallet-signature": signature,
       "x-agent-id": agentId,
       ...(threadId && { "x-thread-id": threadId }),
+      ...(subjectId && { "x-subject-id": subjectId }),
     };
   };
 
@@ -279,7 +283,10 @@ export async function fromSigner(
  *
  * const mcpClient = await fromApiKey(
  *   "zk_...",
- *   { agentId: "my-agent" }
+ *   {
+ *     agentId: "my-agent",
+ *     subjectId: "tenant-a" // optional
+ *   }
  * );
  * ```
  *
@@ -291,7 +298,12 @@ export async function fromApiKey(
   apiKey: string,
   options: McpFromApiKeyOptions
 ): Promise<Client> {
-  const { agentId, threadId, mcpUrl = "https://zkstash.ai/mcp" } = options;
+  const {
+    agentId,
+    subjectId,
+    threadId,
+    mcpUrl = "https://zkstash.ai/mcp",
+  } = options;
 
   if (!agentId) {
     throw new Error("agentId is required for MCP client");
@@ -303,6 +315,9 @@ export async function fromApiKey(
       const headers = new Headers(opts?.headers || {});
       headers.set("Authorization", `Bearer ${apiKey}`);
       headers.set("x-agent-id", agentId);
+      if (subjectId) {
+        headers.set("x-subject-id", subjectId);
+      }
       if (threadId) {
         headers.set("x-thread-id", threadId);
       }

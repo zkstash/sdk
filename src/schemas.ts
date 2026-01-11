@@ -30,12 +30,14 @@ export const DirectMemorySchema = z.object({
 export const CreateMemoryRequestSchema = z
   .object({
     agentId: z.string(),
+    subjectId: z.string().optional(), // Multi-tenant isolation
     threadId: z.string().optional(),
     schemas: z.array(z.string()).optional(),
     conversation: z.array(ConversationMessageSchema).optional(),
     memories: z.array(DirectMemorySchema).optional(),
     ttl: z.string().optional(), // Default TTL for all memories in request
     expiresAt: z.number().optional(), // Default expiry timestamp for all memories
+    force: z.boolean().optional(), // Bypass idempotency check
   })
   .refine((data) => data.conversation || data.memories, {
     message: "Either 'conversation' or 'memories' must be provided",
@@ -44,12 +46,14 @@ export const CreateMemoryRequestSchema = z
 export const CreateMemoryResponseSchema = ResponseSchema.extend({
   created: z.array(
     z.object({
+      id: z.string(),
       kind: z.string(),
       metadata: z.record(z.string(), z.any()),
     })
   ),
   updated: z.array(
     z.object({
+      id: z.string(),
       kind: z.string(),
       metadata: z.record(z.string(), z.any()),
     })
@@ -61,11 +65,20 @@ export const UpdateMemoryRequestSchema = z.object({
   expiresAt: z.number().nullable().optional(), // Set expiry (null = remove expiry, make permanent)
 });
 
+export const UpdateMemoryResponseSchema = ResponseSchema.extend({
+  memory: z
+    .object({
+      updated: z.number(),
+    })
+    .optional(),
+});
+
 export const SearchMemoriesFiltersSchema = z.object({
   agentId: z.string().optional(),
+  subjectId: z.string().optional(), // Multi-tenant isolation filter
   threadId: z.string().optional(),
   kind: z.string().optional(),
-  tags: z.array(Tag).optional()
+  tags: z.array(Tag).optional(),
 });
 
 export const SearchMemoriesRequestSchema = z.object({
@@ -74,7 +87,39 @@ export const SearchMemoriesRequestSchema = z.object({
 });
 
 export const ExtendedSearchSchema = SearchMemoriesRequestSchema.extend({
-  mode: z.enum(["raw", "answer", "map"]).default("raw"),
+  mode: z.enum(["llm", "answer", "map"]).optional(),
+});
+
+// -----------------------------------------------------------------------------
+// LLM Memory Response Types (for search mode: "llm")
+// -----------------------------------------------------------------------------
+
+export const EntityMentionSchema = z.object({
+  name: z.string(),
+  type: z.string(),
+});
+
+export const LLMMemorySchema = z.object({
+  id: z.string(),
+  kind: z.string(),
+  quality: z.object({
+    relevance: z.number(),
+    confidence: z.number(),
+  }),
+  data: z.record(z.string(), z.unknown()),
+  context: z.object({
+    when: z.string().optional(),
+    mentions: z.array(EntityMentionSchema).optional(),
+    tags: z.array(z.string()).optional(),
+    isLatest: z.boolean(),
+  }),
+  source: z.string(),
+});
+
+export const LLMSearchResponseSchema = z.object({
+  success: z.boolean(),
+  memories: z.array(LLMMemorySchema),
+  searchedAt: z.string(),
 });
 
 // Memory object schema
@@ -121,14 +166,14 @@ export const CreateSchemaRequestSchema = z.object({
     .optional()
     .describe(
       "Fields that identify 'same entity' for auto-supersede. " +
-      "E.g., ['kind'] means only one memory of this kind per user."
+        "E.g., ['kind'] means only one memory of this kind per user."
     ),
   schema: z.string(),
 });
 
 export const UpdateSchemaRequestSchema = CreateSchemaRequestSchema.omit({
   name: true,
-});
+}).partial();
 
 // Schema object
 export const SchemaSchema = z.object({

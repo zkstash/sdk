@@ -25,6 +25,10 @@ import {
   RegisterSchemaRequest,
   SchemaUpdatedResponseSchema,
   DirectMemorySchema,
+  EntityMentionSchema,
+  LLMMemorySchema,
+  LLMSearchResponseSchema,
+  UpdateMemoryResponseSchema,
 } from "./schemas";
 
 /**
@@ -45,6 +49,8 @@ export type PaymentConfig = {
 export interface McpFromPrivateKeyOptions {
   /** The agent ID (required for MCP) */
   agentId: string;
+  /** The subject ID for multi-tenant isolation (optional) */
+  subjectId?: string;
   /** The thread ID (optional) */
   threadId?: string;
   /** The base URL for the MCP endpoint */
@@ -61,6 +67,8 @@ export interface McpFromApiKeyOptions {
   mcpUrl?: string;
   /** The agent ID (required for MCP) */
   agentId: string;
+  /** The subject ID for multi-tenant isolation (optional) */
+  subjectId?: string;
   /** The thread ID (optional) */
   threadId?: string;
 }
@@ -80,6 +88,8 @@ export interface GrantPayload {
   g: string;
   /** Optional: Limit access to a specific agentId. Omit for all agents. */
   a?: string;
+  /** Optional: Limit access to a specific subjectId. Omit for all subjects. */
+  u?: string;
   /** Expiration timestamp (unix seconds) */
   e: number;
 }
@@ -105,6 +115,8 @@ export interface CreateGrantOptions {
   grantee: string;
   /** Optional: Limit access to a specific agentId */
   agentId?: string;
+  /** Optional: Limit access to a specific subjectId */
+  subjectId?: string;
   /** Expiration: duration string ("7d", "24h", "30m") or unix timestamp */
   expiresIn?: string | number;
   /** Expiration: explicit timestamp (alternative to expiresIn) */
@@ -125,10 +137,10 @@ export const SHARE_CODE_PREFIX = "zkg1_";
  * Attestation claim types supported by zkStash.
  */
 export type AttestationClaim =
-  | "has_memories_matching"  // Agent has memories matching a query
-  | "memory_count_gte"       // Agent has >= N memories
-  | "has_schema"             // Agent has a registered schema
-  | "shared_memories_from";  // Memories came from specific grantor
+  | "has_memories_matching" // Agent has memories matching a query
+  | "memory_count_gte" // Agent has >= N memories
+  | "has_schema" // Agent has a registered schema
+  | "shared_memories_from"; // Memories came from specific grantor
 
 /**
  * Attestation - what zkStash attests to.
@@ -139,6 +151,7 @@ export interface Attestation {
     query?: string;
     filters?: {
       agentId?: string;
+      subjectId?: string;
       kind?: string;
       tags?: string[];
     };
@@ -150,7 +163,7 @@ export interface Attestation {
   result: {
     satisfied: boolean;
     matchCount?: number;
-    namespace: string;  // Hashed userId for privacy
+    namespace: string; // Hashed userId for privacy
   };
   issuedAt: number;
   expiresAt: number;
@@ -173,6 +186,7 @@ export interface CreateAttestationOptions {
   query?: string;
   filters?: {
     agentId?: string;
+    subjectId?: string;
     kind?: string;
     tags?: string[];
   };
@@ -202,6 +216,7 @@ export type DirectMemory = z.infer<typeof DirectMemorySchema>;
 export type CreateMemoryRequest = z.infer<typeof CreateMemoryRequestSchema>;
 export type CreateMemoryResponse = z.infer<typeof CreateMemoryResponseSchema>;
 export type UpdateMemoryRequest = z.infer<typeof UpdateMemoryRequestSchema>;
+export type UpdateMemoryResponse = z.infer<typeof UpdateMemoryResponseSchema>;
 
 export type SearchMemoriesFilters = z.infer<typeof SearchMemoriesFiltersSchema>;
 export type SearchMemoriesRequest = z.infer<typeof SearchMemoriesRequestSchema>;
@@ -219,3 +234,8 @@ export type Schema = z.infer<typeof SchemaSchema>;
 export type SchemaResponse = z.infer<typeof SchemaResponseSchema>;
 export type SchemasResponse = z.infer<typeof SchemasResponseSchema>;
 export type SchemaUpdatedResponse = z.infer<typeof SchemaUpdatedResponseSchema>;
+
+// LLM Memory types (for search mode: "llm")
+export type EntityMention = z.infer<typeof EntityMentionSchema>;
+export type LLMMemory = z.infer<typeof LLMMemorySchema>;
+export type LLMSearchResponse = z.infer<typeof LLMSearchResponseSchema>;

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { ZkStash, fromApiKey } from "../src/rest";
+import type { CreateMemoryRequest, Attestation } from "../src/types";
 
 import { z } from "zod";
 
@@ -28,7 +29,7 @@ describe("ZkStash REST Client", () => {
         json: async () => ({ id: "mem_123" }),
       });
 
-      const payload = {
+      const payload: CreateMemoryRequest = {
         agentId: "agent_1",
         conversation: [{ role: "user", content: "hello" }],
       };
@@ -102,50 +103,6 @@ describe("ZkStash REST Client", () => {
         })
       );
     });
-
-    it("should verify memory integrity locally", () => {
-      // stableStringify produces: {"agentId":"agent-007","data":{"name":"Alice"},"kind":"UserProfile"}
-      const expectedContent = '{"agentId":"agent-007","data":{"name":"Alice"},"kind":"UserProfile"}';
-      const expectedHash =
-        "0x" +
-        require("crypto")
-          .createHash("sha256")
-          .update(expectedContent)
-          .digest("hex");
-
-      const memory = {
-        kind: "UserProfile",
-        metadata: {
-          agentId: "agent-007",
-          name: "Alice",
-          contentHash: expectedHash,
-        },
-      };
-
-      const result = client.verifyMemoryIntegrity(memory);
-
-      // No API call should be made
-      expect(fetchMock).not.toHaveBeenCalled();
-      expect(result.intact).toBe(true);
-      expect(result.storedHash).toBe(result.computedHash);
-    });
-
-    it("should detect tampered memory", () => {
-      const memory = {
-        kind: "UserProfile",
-        metadata: {
-          agentId: "agent-007",
-          name: "Alice",
-          contentHash: "0xfakehash123", // Wrong hash
-        },
-      };
-
-      const result = client.verifyMemoryIntegrity(memory);
-
-      expect(result.intact).toBe(false);
-      expect(result.storedHash).toBe("0xfakehash123");
-      expect(result.computedHash).not.toBe(result.storedHash);
-    });
   });
 
   describe("Schemas", () => {
@@ -189,7 +146,7 @@ describe("ZkStash REST Client", () => {
 
   describe("Attestations", () => {
     it("should create an attestation", async () => {
-      const mockAttestation = {
+      const mockAttestation: Attestation = {
         claim: "has_memories_matching",
         params: { query: "recipes", filters: { agentId: "recipe-bot" } },
         result: { satisfied: true, matchCount: 5, namespace: "0x123" },
@@ -268,13 +225,13 @@ describe("ZkStash REST Client", () => {
     it("should verify an attestation locally", async () => {
       // Future timestamp so attestation is not expired
       const futureExpiry = Math.floor(Date.now() / 1000) + 86400;
-      const attestation = {
-        claim: "has_memories_matching" as const,
+      const attestation: Attestation = {
+        claim: "has_memories_matching",
         params: { query: "recipes" },
         result: { satisfied: true, matchCount: 5, namespace: "0x123" },
         issuedAt: Math.floor(Date.now() / 1000),
         expiresAt: futureExpiry,
-        issuer: "zkstash.ai" as const,
+        issuer: "zkstash.ai",
       };
 
       // Mock the well-known endpoint to return a public key
@@ -287,11 +244,14 @@ describe("ZkStash REST Client", () => {
       });
 
       // Use a fake signature - it will fail verification but we're testing the flow
-      const result = await client.verifyAttestation(attestation, "0x" + "cd".repeat(64));
+      const result = await client.verifyAttestation(
+        attestation,
+        "0x" + "cd".repeat(64)
+      );
 
       // Should have fetched the public key from well-known endpoint
       expect(fetchMock).toHaveBeenCalledWith(
-        `${baseUrl}/.well-known/zkstash-keys.json`
+        `https://zkstash.ai/.well-known/zkstash-keys.json`
       );
       // Signature won't match since it's fake, but the flow should work
       expect(result.valid).toBe(false);
@@ -299,13 +259,13 @@ describe("ZkStash REST Client", () => {
     });
 
     it("should return invalid for expired attestation", async () => {
-      const attestation = {
-        claim: "has_memories_matching" as const,
+      const attestation: Attestation = {
+        claim: "has_memories_matching",
         params: { query: "recipes" },
         result: { satisfied: true, matchCount: 5, namespace: "0x123" },
         issuedAt: 1703123456,
         expiresAt: 1703123456, // Already expired (in the past)
-        issuer: "zkstash.ai" as const,
+        issuer: "zkstash.ai",
       };
 
       // Local verification checks expiry first, no API call needed

@@ -1,9 +1,16 @@
 import { describe, it, expect } from "vitest";
+import bs58 from "bs58";
+import * as ed from "@noble/ed25519";
+import { sha512 } from "@noble/hashes/sha2.js";
 import {
   signerFromPrivateKey,
   signWithEvm,
   type EvmSigner,
+  type SvmSigner,
 } from "../src/utils";
+
+// Configure ed25519 to use sha512 (required for Node.js)
+ed.hashes.sha512 = sha512;
 
 describe("utils", () => {
   describe("signerFromPrivateKey", () => {
@@ -16,8 +23,18 @@ describe("utils", () => {
     });
 
     it("should create a Solana signer from a base58 string (64 bytes)", async () => {
-      // TODO: implement this test
-      throw new Error("Not implemented");
+      // Generate a valid 64-byte keypair
+      const privKey = ed.utils.randomSecretKey();
+      const pubKey = ed.getPublicKey(privKey);
+      const fullKey = new Uint8Array(64);
+      fullKey.set(privKey);
+      fullKey.set(pubKey, 32);
+      const base58Key = bs58.encode(fullKey);
+
+      const signer = (await signerFromPrivateKey(base58Key)) as SvmSigner;
+      expect(signer).toBeDefined();
+      expect(signer.address).toBeDefined();
+      expect(typeof signer.signMessages).toBe("function");
     });
 
     it("should throw on invalid private key", async () => {

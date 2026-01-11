@@ -11,11 +11,14 @@ import type {
   Attestation,
   DirectMemory,
   CreateMemoryRequest,
+  CreateMemoryResponse,
   UpdateMemoryRequest,
+  UpdateMemoryResponse,
   SearchMemoriesRequest,
   ExtendedSearchRequest,
   CreateSchemaRequest,
   UpdateSchemaRequest,
+  MemoryResponse,
   MemoriesResponse,
   SchemaResponse,
   SchemasResponse,
@@ -42,7 +45,45 @@ import {
   verifyEd25519,
 } from "./utils.js";
 
-// ------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
+// Options Types for Method Signatures
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type StoreMemoriesOptions = {
+  agentId: string;
+  subjectId?: string;
+  threadId?: string;
+  memories: DirectMemory[];
+  ttl?: string;
+  expiresAt?: number;
+};
+
+export type BatchDeleteMemoriesOptions = {
+  ids?: string[];
+  filters?: {
+    agentId?: string;
+    subjectId?: string;
+    threadId?: string;
+    kind?: string;
+    tags?: string[];
+  };
+};
+
+export type BatchUpdateMemoriesOptions = {
+  ids: string[];
+  update: UpdateMemoryRequest;
+};
+
+export type BatchCreateMemoriesOptions = {
+  agentId: string;
+  subjectId?: string;
+  threadId?: string;
+  memories: DirectMemory[];
+  /** Default TTL for all memories (e.g., "7d") */
+  ttl?: string;
+  /** Default expiry timestamp for all memories */
+  expiresAt?: number;
+};
 
 type SearchMemoriesOptions = {
   /** Additional grants to include for this request */
@@ -55,10 +96,6 @@ type SearchMemoriesOptions = {
    */
   scope?: "own" | "shared" | "all";
 };
-
-
-
-// ---
 
 // Re-export types for convenience
 export type { PaymentConfig } from "./types.js";
@@ -121,7 +158,7 @@ export class ZkStash {
    * Create memories via LLM extraction from a conversation.
    * Use this when you want the AI to analyze the conversation and extract relevant facts.
    */
-  createMemory(payload: CreateMemoryRequest): Promise<MemoriesResponse> {
+  createMemory(payload: CreateMemoryRequest): Promise<CreateMemoryResponse> {
     if (!payload.conversation && !payload.memories) {
       throw new Error("Either 'conversation' or 'memories' must be provided");
     }
@@ -138,112 +175,76 @@ export class ZkStash {
    * @example
    * ```typescript
    * // Basic usage
-   * await client.storeMemories("agent-1", [
-   *   { kind: "UserProfile", data: { name: "Alice", age: 30 } },
-   *   { kind: "Preference", data: { category: "food", value: "vegetarian" } }
-   * ]);
+   * await client.storeMemories({
+   *   agentId: "agent-1",
+   *   memories: [
+   *     { kind: "UserProfile", data: { name: "Alice", age: 30 } },
+   *     { kind: "Preference", data: { category: "food", value: "vegetarian" } }
+   *   ]
+   * });
+   *
+   * // With subjectId for multi-tenant isolation
+   * await client.storeMemories({
+   *   agentId: "agent-1",
+   *   subjectId: "tenant-a",
+   *   memories: [{ kind: "SessionContext", data: { task: "booking" } }]
+   * });
    *
    * // With TTL (expires in 24 hours)
-   * await client.storeMemories("agent-1", [
-   *   { kind: "SessionContext", data: { task: "booking" }, ttl: "24h" }
-   * ]);
-   *
-   * // With default TTL for all memories
-   * await client.storeMemories("agent-1", memories, { ttl: "7d" });
+   * await client.storeMemories({
+   *   agentId: "agent-1",
+   *   memories: [{ kind: "SessionContext", data: { task: "booking" } }],
+   *   ttl: "24h"
+   * });
    * ```
    */
-  storeMemories(
-    agentId: string,
-    memories: DirectMemory[],
-    options?: { threadId?: string; ttl?: string; expiresAt?: number }
-  ): Promise<MemoriesResponse> {
+  storeMemories(options: StoreMemoriesOptions): Promise<CreateMemoryResponse> {
     return this.request("/memories", {
       method: "POST",
       body: {
-        agentId,
-        threadId: options?.threadId,
-        ttl: options?.ttl,
-        expiresAt: options?.expiresAt,
-        memories,
+        agentId: options.agentId,
+        subjectId: options.subjectId,
+        threadId: options.threadId,
+        ttl: options.ttl,
+        expiresAt: options.expiresAt,
+        memories: options.memories,
       } as CreateMemoryRequest,
     });
   }
 
-  updateMemory(id: string, params: UpdateMemoryRequest) {
+  updateMemory(
+    id: string,
+    params: UpdateMemoryRequest
+  ): Promise<UpdateMemoryResponse> {
     return this.request(`/memories/${id}`, {
       method: "PATCH",
       body: params,
     });
   }
 
-  deleteMemory(id: string) {
+  deleteMemory(id: string): Promise<{ success: boolean }> {
     return this.request(`/memories/${id}`, {
       method: "DELETE",
     });
   }
 
   /**
-   * Verify a memory's integrity locally by recomputing its content hash.
-   * No API call required - verification is done entirely client-side.
+   * Get a single memory by ID.
+   * Returns the raw memory format including full metadata.
    *
-   * @param memory - The memory object (from search or get)
-   * @returns Integrity verification result
+   * @param id - The memory ID
+   * @returns The memory with full metadata
    *
    * @example
    * ```typescript
    * const { memory } = await client.getMemory("mem_abc123");
-   * const result = client.verifyMemoryIntegrity(memory);
-   * if (result.intact) {
-   *   console.log("Memory is intact");
-   * } else {
-   *   console.log("Memory may have been tampered with");
-   *   console.log("Stored:", result.storedHash);
-   *   console.log("Computed:", result.computedHash);
-   * }
+   * console.log(memory.metadata);
    * ```
    */
-  verifyMemoryIntegrity(memory: {
-    kind: string;
-    data?: Record<string, unknown>;
-    metadata?: Record<string, unknown>;
-  }): {
-    intact: boolean;
-    storedHash: string | null;
-    computedHash: string;
-    verifiedAt: number;
-  } {
-    const metadata = memory.metadata || {};
-    const storedHash = (metadata.contentHash as string) || null;
-    const agentId = metadata.agentId as string;
-
-    // Extract data - either from memory.data or from metadata (excluding system fields)
-    const systemFields = [
-      "agentId",
-      "threadId",
-      "kind",
-      "tags",
-      "confidence",
-      "expiresAt",
-      "updatedAt",
-      "contentHash",
-    ];
-    const data =
-      memory.data ||
-      Object.fromEntries(
-        Object.entries(metadata).filter(([k]) => !systemFields.includes(k))
-      );
-
-    // Compute hash: sha256(stableStringify({ kind, data, agentId }))
-    const content = stableStringify({ kind: memory.kind, data, agentId });
-    const computedHash =
-      "0x" + createHash("sha256").update(content).digest("hex");
-
-    return {
-      intact: storedHash === computedHash,
-      storedHash,
-      computedHash,
-      verifiedAt: Date.now(),
-    };
+  getMemory(id: string): Promise<MemoryResponse> {
+    return this.request(`/memories/${id}`, {
+      method: "GET",
+    });
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -322,7 +323,12 @@ export class ZkStash {
 
     // Fetch and cache public key if needed
     if (!this.cachedPublicKey) {
-      const res = await fetch(`${this.baseUrl}/.well-known/zkstash-keys.json`);
+      // Extract origin from baseUrl for .well-known endpoint
+      // e.g., "https://api.zkstash.ai/api/v1" -> "https://api.zkstash.ai"
+
+      const res = await this.fetchFn(
+        `https://zkstash.ai/.well-known/zkstash-keys.json`
+      );
       const data = await res.json();
       this.cachedPublicKey = data.attestationPublicKey;
     }
@@ -349,6 +355,12 @@ export class ZkStash {
    *   { scope: "own" }
    * );
    *
+   * // Search with subjectId filter
+   * await client.searchMemories({
+   *   query: "preferences",
+   *   filters: { agentId: "my-agent", subjectId: "tenant-a" }
+   * });
+   *
    * // Search only shared memories (from grants)
    * await client.searchMemories(
    *   { query: "findings", filters: { agentId: "researcher" } },
@@ -373,6 +385,9 @@ export class ZkStash {
       queryParams.agentId = params.filters.agentId;
     }
     const qs = new URLSearchParams(queryParams);
+    if (params.filters.subjectId) {
+      qs.set("subjectId", params.filters.subjectId);
+    }
     if (params.filters.threadId) {
       qs.set("threadId", params.filters.threadId);
     }
@@ -488,6 +503,7 @@ export class ZkStash {
    * const { grant, shareCode } = await client.createGrant({
    *   grantee: "0xBBB...",
    *   agentId: "researcher",  // optional: scope to specific agent
+   *   subjectId: "tenant-a",  // optional: scope to specific subject
    *   expiresIn: "7d",        // or expiresAt: timestamp
    * });
    *
@@ -523,6 +539,7 @@ export class ZkStash {
     const grant = await signGrant(this.signer, {
       g: options.grantee,
       a: options.agentId,
+      u: options.subjectId,
       e: expiresAt,
     });
 
@@ -544,12 +561,13 @@ export class ZkStash {
         ? grantFromShareCode(grantOrCode)
         : grantOrCode;
 
-    // Avoid duplicates
+    // Avoid duplicates (include subjectId in comparison)
     const exists = this.instanceGrants.some(
       (g) =>
         g.p.f === grant.p.f &&
         g.p.g === grant.p.g &&
         g.p.a === grant.p.a &&
+        g.p.u === grant.p.u &&
         g.p.e === grant.p.e
     );
 
@@ -568,6 +586,7 @@ export class ZkStash {
           g.p.f === grant.p.f &&
           g.p.g === grant.p.g &&
           g.p.a === grant.p.a &&
+          g.p.u === grant.p.u &&
           g.p.e === grant.p.e
         )
     );
@@ -627,28 +646,27 @@ export class ZkStash {
   }
 
   /**
-   * Delete multiple memories by ID (batch operation).
+   * Delete multiple memories by ID or filter (batch operation).
    *
    * @example
    * ```typescript
-   * const result = await client.batchDeleteMemories([
-   *   "mem_abc123",
-   *   "mem_def456",
-   * ]);
-   * // result.deleted = 2
+   * // Delete by IDs
+   * const result = await client.batchDeleteMemories({
+   *   ids: ["mem_abc123", "mem_def456"]
+   * });
+   *
+   * // Delete by filter (with subjectId)
+   * const result = await client.batchDeleteMemories({
+   *   filters: { agentId: "my-agent", subjectId: "tenant-a" }
+   * });
    * ```
    */
   batchDeleteMemories(
-    input:
-      | string[]
-      | {
-        agentId?: string;
-        threadId?: string;
-        kind?: string;
-        tags?: string[];
-      }
-  ) {
-    const body = Array.isArray(input) ? { ids: input } : { filters: input };
+    options: BatchDeleteMemoriesOptions
+  ): Promise<{ success: boolean; deleted: number }> {
+    const body = options.ids
+      ? { ids: options.ids }
+      : { filters: options.filters };
     return this.request<{ success: boolean; deleted: number }>(
       "/memories/batch/delete",
       {
@@ -664,26 +682,77 @@ export class ZkStash {
    * @example
    * ```typescript
    * // Add tags to multiple memories
-   * await client.batchUpdateMemories(
-   *   ["mem_abc123", "mem_def456"],
-   *   { tags: ["archived", "q4-2024"] }
-   * );
+   * await client.batchUpdateMemories({
+   *   ids: ["mem_abc123", "mem_def456"],
+   *   update: { tags: ["archived", "q4-2024"] }
+   * });
    *
    * // Set expiry on multiple memories
-   * await client.batchUpdateMemories(
-   *   ["mem_abc123", "mem_def456"],
-   *   { expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000 } // 7 days
-   * );
+   * await client.batchUpdateMemories({
+   *   ids: ["mem_abc123", "mem_def456"],
+   *   update: { expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000 } // 7 days
+   * });
    * ```
    */
-  batchUpdateMemories(ids: string[], update: UpdateMemoryRequest) {
+  batchUpdateMemories(
+    options: BatchUpdateMemoriesOptions
+  ): Promise<{ success: boolean; updated: number }> {
     return this.request<{ success: boolean; updated: number }>(
       "/memories/batch/update",
       {
         method: "POST",
-        body: { ids, update },
+        body: { ids: options.ids, update: options.update },
       }
     );
+  }
+
+  /**
+   * Create multiple memories in a single batch operation.
+   * This is the fastest way to ingest structured data directly.
+   * Up to 100 memories per request.
+   *
+   * Unlike `storeMemories`, this uses a dedicated high-performance endpoint
+   * with batch vector upserts for maximum throughput.
+   *
+   * @example
+   * ```typescript
+   * // Batch create 50 memories at once
+   * const result = await client.batchCreateMemories({
+   *   agentId: "agent-1",
+   *   memories: [
+   *     { kind: "UserProfile", data: { name: "Alice", age: 30 } },
+   *     { kind: "Preference", data: { category: "food", value: "vegetarian" } },
+   *     // ... up to 100 memories
+   *   ]
+   * });
+   * console.log(`Created ${result.created.length} memories`);
+   *
+   * // With TTL (all memories expire in 24 hours)
+   * await client.batchCreateMemories({
+   *   agentId: "agent-1",
+   *   memories: [...],
+   *   ttl: "24h"
+   * });
+   * ```
+   */
+  batchCreateMemories(options: BatchCreateMemoriesOptions): Promise<{
+    success: boolean;
+    created: Array<{ id: string; kind: string }>;
+  }> {
+    return this.request<{
+      success: boolean;
+      created: Array<{ id: string; kind: string }>;
+    }>("/memories/batch/create", {
+      method: "POST",
+      body: {
+        agentId: options.agentId,
+        subjectId: options.subjectId,
+        threadId: options.threadId,
+        memories: options.memories,
+        ttl: options.ttl,
+        expiresAt: options.expiresAt,
+      },
+    });
   }
 
   // ----- private helpers -----
@@ -723,7 +792,6 @@ export class ZkStash {
 
       return (await res.json()) as T;
     } catch (error) {
-      console.error("request error:", (error as Error).message);
       throw error;
     }
   }

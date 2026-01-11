@@ -1,4 +1,3 @@
-
 import { type LocalAccount as EvmSigner } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import {
@@ -6,15 +5,16 @@ import {
   createKeyPairSignerFromBytes,
   createKeyPairSignerFromPrivateKeyBytes,
 } from "@solana/kit";
+
 import * as ed from "@noble/ed25519";
-import { sha512 } from "@noble/hashes/sha512";
+import { sha512 } from "@noble/hashes/sha2.js";
 
 import type { Signer as X402Signer } from "x402-fetch";
 
-import bs58 from 'bs58';
+import bs58 from "bs58";
 
 // Configure ed25519 to use sha512 (required for Node.js)
-ed.etc.sha512Sync = (...m: Uint8Array[]) => sha512(ed.etc.concatBytes(...m));
+ed.hashes.sha512 = sha512;
 
 // Type representing a Solana signer with message signing capability
 type SvmSigner = {
@@ -22,7 +22,9 @@ type SvmSigner = {
   signMessages: (messages: any[]) => Promise<any[]>;
 };
 
-export async function signerFromPrivateKey(privateKey: string): Promise<X402Signer> {
+export async function signerFromPrivateKey(
+  privateKey: string
+): Promise<X402Signer> {
   if (privateKey.startsWith("0x")) {
     return privateKeyToAccount(privateKey as `0x${string}`) as EvmSigner;
   }
@@ -94,7 +96,9 @@ export function buildGrantMessage(payload: GrantPayload): string {
 export function parseDuration(duration: string): number {
   const match = duration.match(/^(\d+)([smhdw])$/);
   if (!match) {
-    throw new Error(`Invalid duration format: ${duration}. Use format like "7d", "24h", "30m"`);
+    throw new Error(
+      `Invalid duration format: ${duration}. Use format like "7d", "24h", "30m"`
+    );
   }
 
   const value = parseInt(match[1], 10);
@@ -115,7 +119,7 @@ export function parseDuration(duration: string): number {
  * Sign a grant payload with the given signer.
  *
  * @param signer - The x402 signer (EVM or Solana wallet)
- * @param payload - The grant payload to sign
+ * @param payload - The grant payload to sign (without 'f' - grantor address is added from signer)
  * @returns Complete signed grant
  */
 export async function signGrant(
@@ -183,9 +187,24 @@ export function stableStringify(obj: unknown): string {
     return "[" + obj.map(stableStringify).join(",") + "]";
   }
 
-  const sortedKeys = Object.keys(obj).sort();
+  // Match server-side sorting order for consistent hashing
+  const customOrder = ["id", "kind", "tags"];
+  const sortedKeys = Object.keys(obj).sort((a, b) => {
+    const aIndex = customOrder.indexOf(a);
+    const bIndex = customOrder.indexOf(b);
+
+    if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+    if (aIndex !== -1) return -1;
+    if (bIndex !== -1) return 1;
+
+    return a < b ? -1 : 1;
+  });
+
   const pairs = sortedKeys.map(
-    (key) => `${JSON.stringify(key)}:${stableStringify((obj as Record<string, unknown>)[key])}`
+    (key) =>
+      `${JSON.stringify(key)}:${stableStringify(
+        (obj as Record<string, unknown>)[key]
+      )}`
   );
   return "{" + pairs.join(",") + "}";
 }
