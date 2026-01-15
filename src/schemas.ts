@@ -38,6 +38,7 @@ export const CreateMemoryRequestSchema = z
     ttl: z.string().optional(), // Default TTL for all memories in request
     expiresAt: z.number().optional(), // Default expiry timestamp for all memories
     force: z.boolean().optional(), // Bypass idempotency check
+    conversationDate: z.iso.date().optional(), // Date of the conversation 
   })
   .refine((data) => data.conversation || data.memories, {
     message: "Either 'conversation' or 'memories' must be provided",
@@ -166,7 +167,7 @@ export const CreateSchemaRequestSchema = z.object({
     .optional()
     .describe(
       "Fields that identify 'same entity' for auto-supersede. " +
-        "E.g., ['kind'] means only one memory of this kind per user."
+      "E.g., ['kind'] means only one memory of this kind per user."
     ),
   schema: z.string(),
 });
